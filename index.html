@@ -10,19 +10,18 @@
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <div class="eyebrow">EXTRUSION</div>
-      <h1>Sr. Lead Daily Checklist</h1>
-    </div>
+    <div><div class="eyebrow">EXTRUSION</div><h1>Sr. Lead Daily Checklist</h1></div>
     <button id="settingsBtn" class="icon-btn" aria-label="Settings">⚙️</button>
   </header>
 
   <main class="shell">
     <section class="card shift-card">
-      <div class="grid-3">
-        <label>Date<input id="date" type="date"></label>
+      <div class="shift-meta">
+        <div class="shift-meta-row">
+          <label class="date-field">Date<input id="date" type="date"></label>
+          <label class="shift-field">Shift<select id="shift"><option>A</option><option>B</option><option>C</option><option>D</option></select></label>
+        </div>
         <label>Sr. Lead<input id="lead" type="text" placeholder="Name"></label>
-        <label>Shift<select id="shift"><option>A</option><option>B</option><option>C</option><option>D</option></select></label>
       </div>
       <div class="progress-wrap">
         <div class="progress-label"><span>Checklist progress</span><strong id="progressText">0%</strong></div>
@@ -35,14 +34,14 @@
       <button class="tab" data-target="productivity">Productivity / Blends</button>
       <button class="tab" data-target="equipment">Equipment</button>
       <button class="tab" data-target="inventory">Inventory</button>
-      <button class="tab" data-target="trim">Trim / Notes</button>
+      <button class="tab" data-target="notes">Notes</button>
     </nav>
 
     <section id="safety" class="panel active"></section>
     <section id="productivity" class="panel"></section>
     <section id="equipment" class="panel"></section>
     <section id="inventory" class="panel"></section>
-    <section id="trim" class="panel"></section>
+    <section id="notes" class="panel"></section>
 
     <section class="actions card">
       <button id="saveBtn" class="secondary">Save</button>
@@ -51,20 +50,55 @@
     </section>
   </main>
 
+  <dialog id="scanDialog" class="scan-dialog">
+    <div class="dialog-card">
+      <div class="dialog-head">
+        <div><div class="eyebrow dark">EPIC PHOTO READER</div><h2 id="scanTitle">Read EPIC photo</h2></div>
+        <button type="button" id="scanClose" class="close-x" aria-label="Close">×</button>
+      </div>
+
+      <section id="frameStage">
+        <div class="scan-notice info">Fit the four blue points to the corners of the light EPIC display area, not the black bezel. Good framing greatly improves the reading.</div>
+        <div id="frameWrap" class="frame-wrap">
+          <img id="frameImage" alt="EPIC photo to align">
+          <svg id="frameSvg" class="frame-svg" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
+            <polygon id="framePolygon" points="0,0 0,0 0,0 0,0"></polygon>
+          </svg>
+          <button class="frame-handle" data-i="0" aria-label="Top left corner"></button>
+          <button class="frame-handle" data-i="1" aria-label="Top right corner"></button>
+          <button class="frame-handle" data-i="2" aria-label="Bottom right corner"></button>
+          <button class="frame-handle" data-i="3" aria-label="Bottom left corner"></button>
+        </div>
+        <div class="frame-tip">Drag only if needed. Keep each point on the four corners of the EPIC display area.</div>
+        <div class="dialog-actions split-actions">
+          <button type="button" id="frameReset" class="secondary">Reset Frame</button>
+          <button type="button" id="scanRead" class="primary">Read Photo</button>
+        </div>
+      </section>
+
+      <section id="resultStage" class="hidden">
+        <div id="scanProgress" class="scan-progress hidden"><div class="spinner"></div><div><strong id="scanProgressTitle">Reading photo…</strong><div id="scanProgressText" class="small">Preparing image</div></div></div>
+        <canvas id="scanPreview" class="scan-preview hidden"></canvas>
+        <div id="scanNotice" class="scan-notice hidden"></div>
+        <div id="scanFields" class="scan-fields"></div>
+        <div class="dialog-actions split-actions">
+          <button type="button" id="scanBack" class="secondary">Adjust Frame</button>
+          <button type="button" id="scanApply" class="primary">Apply to Line</button>
+        </div>
+      </section>
+    </div>
+  </dialog>
+
   <dialog id="settingsDialog">
     <form method="dialog" class="dialog-card">
       <h2>Settings</h2>
-      <label>Roll Count app URL
-        <input id="rollCountUrl" type="url" placeholder="Optional">
-      </label>
-      <p class="small">Roll Count stays in its separate app. This checklist only records whether it was completed.</p>
-      <div class="dialog-actions">
-        <button value="cancel" class="secondary">Cancel</button>
-        <button id="saveSettings" value="default" class="primary">Save</button>
-      </div>
+      <label>Roll Count app URL<input id="rollCountUrl" type="url" placeholder="Optional"></label>
+      <p class="small">Roll Count remains a separate app. This checklist does not include roll-count values or completion status.</p>
+      <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button id="saveSettings" value="default" class="primary">Save</button></div>
     </form>
   </dialog>
 
+  <script src="photo-ocr.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
