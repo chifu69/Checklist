@@ -32,8 +32,7 @@
 
     <nav class="tabs" id="tabs">
       <button class="tab active" data-target="safety">Safety</button>
-      <button class="tab" data-target="productivity">Productivity</button>
-      <button class="tab" data-target="blends">Blends</button>
+      <button class="tab" data-target="productivity">Productivity / Blends</button>
       <button class="tab" data-target="equipment">Equipment</button>
       <button class="tab" data-target="inventory">Inventory</button>
       <button class="tab" data-target="trim">Trim / Notes</button>
@@ -41,7 +40,6 @@
 
     <section id="safety" class="panel active"></section>
     <section id="productivity" class="panel"></section>
-    <section id="blends" class="panel"></section>
     <section id="equipment" class="panel"></section>
     <section id="inventory" class="panel"></section>
     <section id="trim" class="panel"></section>
@@ -59,7 +57,7 @@
       <label>Roll Count app URL
         <input id="rollCountUrl" type="url" placeholder="Optional">
       </label>
-      <p class="small">If added, the Roll Count button opens your separate Roll Count app. Roll counts are not duplicated here.</p>
+      <p class="small">Roll Count stays in its separate app. This checklist only records whether it was completed.</p>
       <div class="dialog-actions">
         <button value="cancel" class="secondary">Cancel</button>
         <button id="saveSettings" value="default" class="primary">Save</button>
