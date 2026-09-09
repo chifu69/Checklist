@@ -17,8 +17,8 @@
         secondaryScrew:{x:.470,y:.555,w:.075,h:.070,min:0,max:100,dec:true},
         secondaryLoad:{x:.470,y:.610,w:.075,h:.070,min:0,max:100,dec:true},
         lineSpeed:{x:.638,y:.405,w:.090,h:.070,min:0,max:1000,dec:true},
-        butane:{x:.748,y:.272,w:.075,h:.070,min:0,max:250,dec:true},
-        co2:{x:.862,y:.272,w:.075,h:.070,min:0,max:150,dec:true}
+        butane:{x:.760,y:.268,w:.070,h:.065,min:0,max:250,dec:true},
+        co2:{x:.895,y:.268,w:.070,h:.065,min:0,max:150,dec:true}
       }
     },
     blend:{
@@ -28,7 +28,7 @@
         virgin1:{x:.345,y:.335,w:.055,h:.060,min:0,max:100,dec:true},
         fluff:{x:.535,y:.335,w:.055,h:.060,min:0,max:100,dec:true},
         talc:{x:.728,y:.335,w:.062,h:.060,min:0,max:100,dec:true},
-        virgin2:{x:.925,y:.335,w:.075,h:.060,min:0,max:100,dec:true}
+        virgin2:{x:.920,y:.335,w:.075,h:.060,min:0,max:100,dec:true}
       }
     }
   };
@@ -155,6 +155,23 @@
     ctx.putImageData(im,0,0);return c;
   }
 
+
+  function preprocessClean(raw){
+    const scale=Math.max(5,Math.min(9,Math.round(150/Math.max(1,raw.height))));
+    const W=Math.max(260,Math.round(raw.width*scale)),H=Math.max(110,Math.round(raw.height*scale));
+    const c=document.createElement("canvas");c.width=W+36;c.height=H+36;
+    const ctx=c.getContext("2d",{willReadFrequently:true});ctx.fillStyle="#fff";ctx.fillRect(0,0,c.width,c.height);
+    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality="high";ctx.drawImage(raw,0,0,raw.width,raw.height,18,18,W,H);
+    const im=ctx.getImageData(0,0,c.width,c.height),p=im.data,hist=new Array(256).fill(0);
+    for(let i=0;i<p.length;i+=4){const g=Math.round(.2126*p[i]+.7152*p[i+1]+.0722*p[i+2]);hist[g]++}
+    const total=c.width*c.height;let acc=0,lo=0,hi=255;
+    for(let i=0;i<256;i++){acc+=hist[i];if(acc>=total*.015){lo=i;break}}
+    acc=0;for(let i=255;i>=0;i--){acc+=hist[i];if(acc>=total*.015){hi=i;break}}
+    const span=Math.max(35,hi-lo);
+    for(let i=0;i<p.length;i+=4){let g=Math.round(.2126*p[i]+.7152*p[i+1]+.0722*p[i+2]);g=Math.max(0,Math.min(255,(g-lo)*255/span));p[i]=p[i+1]=p[i+2]=g;p[i+3]=255}
+    ctx.putImageData(im,0,0);return c;
+  }
+
   function normalizeText(s){
     return String(s||"").replace(/,/g,"").replace(/[Oo]/g,"0").replace(/[Il|]/g,"1").replace(/[—–]/g,"-").replace(/\s+/g,"");
   }
@@ -171,20 +188,35 @@
   function confidenceName(n){return n>=75?"high":n>=50?"medium":"low"}
 
   async function recognizeNumber(worker,raw,spec){
-    await worker.setParameters({tessedit_char_whitelist:"0123456789.-",tessedit_pageseg_mode:"7",preserve_interword_spaces:"0"});
+    const tries=[
+      {canvas:preprocessClean(raw),psm:8,bonus:8},
+      {canvas:preprocessNumeric(raw,false),psm:8,bonus:4},
+      {canvas:preprocessNumeric(raw,true),psm:8,bonus:0},
+      {canvas:preprocessClean(raw),psm:7,bonus:0}
+    ];
     let best=null;
-    for(const binary of [true,false]){
-      const processed=preprocessNumeric(raw,binary);
-      const res=await worker.recognize(processed);
-      const value=validCandidate(candidates(res?.data?.text||""),spec),conf=Number(res?.data?.confidence||0);
-      if(value!==null){const item={value:String(value),score:conf,confidence:confidenceName(conf),raw:(res?.data?.text||"").trim()};if(!best||item.score>best.score)best=item;if(conf>=72)break}
+    for(let i=0;i<tries.length;i++){
+      const t=tries[i];
+      await worker.setParameters({
+        tessedit_char_whitelist:"0123456789.-",
+        tessedit_pageseg_mode:t.psm,
+        preserve_interword_spaces:"0",
+        user_defined_dpi:"300"
+      });
+      const res=await worker.recognize(t.canvas);
+      const text=res?.data?.text||"",value=validCandidate(candidates(text),spec),conf=Number(res?.data?.confidence||0);
+      if(value!==null){
+        const score=conf+t.bonus,item={value:String(value),score,confidence:confidenceName(score),raw:String(text).trim()};
+        if(!best||item.score>best.score)best=item;
+        if(score>=78)break;
+      }
     }
     return best;
   }
 
   async function recognizeTitle(worker,warped,spec){
     const raw=crop(warped,spec.title,.05);const c=preprocessNumeric(raw,false);
-    await worker.setParameters({tessedit_char_whitelist:"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 -",tessedit_pageseg_mode:"7"});
+    await worker.setParameters({tessedit_char_whitelist:"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 -",tessedit_pageseg_mode:7});
     const r=await worker.recognize(c);const text=String(r?.data?.text||"").trim();
     const m=text.match(/Extruder\s*([1-4])/i);return {text,line:m?Number(m[1]):null,confidence:Number(r?.data?.confidence||0)};
   }
@@ -200,7 +232,7 @@
       const title=await recognizeTitle(worker,warped,spec);onProgress?.("Reading values",20);
       const fields={};const entries=Object.entries(spec.fields);let idx=0;
       for(const [key,fs] of entries){
-        const raw=crop(warped,fs,.14);const r=await recognizeNumber(worker,raw,fs);if(r)fields[key]=r;
+        const raw=crop(warped,fs,.055);const r=await recognizeNumber(worker,raw,fs);if(r)fields[key]=r;
         idx++;onProgress?.(`Reading ${idx} of ${entries.length}`,20+Math.round(idx/entries.length*78));
       }
       onProgress?.("Done",100);return{fields,title,warpedCanvas:warped};

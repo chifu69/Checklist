@@ -18,7 +18,7 @@
     <section class="card shift-card">
       <div class="shift-meta">
         <div class="shift-meta-row">
-          <label class="date-field">Date<input id="date" type="date"></label>
+          <label class="date-field">Date<div class="date-control"><span id="dateDisplay" class="date-display">—</span><input id="date" type="date" aria-label="Date"></div></label>
           <label class="shift-field">Shift<select id="shift"><option>A</option><option>B</option><option>C</option><option>D</option></select></label>
         </div>
         <label>Sr. Lead<input id="lead" type="text" placeholder="Name"></label>
@@ -50,6 +50,31 @@
     </section>
   </main>
 
+
+  <dialog id="cameraDialog" class="camera-dialog">
+    <div class="dialog-card">
+      <div class="dialog-head">
+        <div><div class="eyebrow dark">EPIC LIVE SCANNER</div><h2 id="cameraTitle">Scan EPIC screen</h2></div>
+        <button type="button" id="cameraClose" class="close-x" aria-label="Close">×</button>
+      </div>
+      <div id="cameraNotice" class="scan-notice info">Fit the light EPIC screen inside the blue frame, hold steady, then tap Scan Screen.</div>
+      <div id="cameraView" class="camera-view">
+        <video id="cameraVideo" autoplay muted playsinline></video>
+        <div id="cameraGuide" class="camera-guide">
+          <span class="corner tl"></span><span class="corner tr"></span><span class="corner br"></span><span class="corner bl"></span>
+          <div class="camera-guide-label">EPIC SCREEN</div>
+        </div>
+      </div>
+      <div class="camera-status" id="cameraStatus">Starting camera…</div>
+      <div class="dialog-actions camera-actions">
+        <button type="button" id="choosePhotoBtn" class="secondary">Choose Photo</button>
+        <button type="button" id="cameraCapture" class="primary">Scan Screen</button>
+      </div>
+      <input id="cameraFallbackInput" type="file" accept="image/*" hidden>
+      <p class="small">If the live camera is unavailable, Choose Photo can take a new photo or select one already saved.</p>
+    </div>
+  </dialog>
+
   <dialog id="scanDialog" class="scan-dialog">
     <div class="dialog-card">
       <div class="dialog-head">
@@ -58,7 +83,7 @@
       </div>
 
       <section id="frameStage">
-        <div class="scan-notice info">Fit the four blue points to the corners of the light EPIC display area, not the black bezel. Good framing greatly improves the reading.</div>
+        <div class="scan-notice info">Fine adjustment: move the four blue points to the corners of the light EPIC display area, not the black bezel.</div>
         <div id="frameWrap" class="frame-wrap">
           <img id="frameImage" alt="EPIC photo to align">
           <svg id="frameSvg" class="frame-svg" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
@@ -69,7 +94,7 @@
           <button class="frame-handle" data-i="2" aria-label="Bottom right corner"></button>
           <button class="frame-handle" data-i="3" aria-label="Bottom left corner"></button>
         </div>
-        <div class="frame-tip">Drag only if needed. Keep each point on the four corners of the EPIC display area.</div>
+        <div class="frame-tip">This adjustment is only needed for a saved photo or if the automatic scan needs correction.</div>
         <div class="dialog-actions split-actions">
           <button type="button" id="frameReset" class="secondary">Reset Frame</button>
           <button type="button" id="scanRead" class="primary">Read Photo</button>

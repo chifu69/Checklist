@@ -1,8 +1,8 @@
 "use strict";
 
 const LINES=["EXT1","EXT2","EXT3","EXT4"];
-const KEY="srLeadChecklist.v1.4";
-const OLD_KEYS=["srLeadChecklist.v1.3","srLeadChecklist.v1.2","srLeadChecklist.v1.1","srLeadChecklist.v1"];
+const KEY="srLeadChecklist.v1.5";
+const OLD_KEYS=["srLeadChecklist.v1.4","srLeadChecklist.v1.3","srLeadChecklist.v1.2","srLeadChecklist.v1.1","srLeadChecklist.v1"];
 const SETTINGS_KEY="srLeadChecklist.settings.v1";
 const $=id=>document.getElementById(id);
 
@@ -54,7 +54,7 @@ const state={
 };
 LINES.forEach(l=>{state.productivity[l]={butane:"",co2:""};state.blends[l]={};state.equipment[l]={};state.scanMeta[l]={}});
 
-let activeProductLine="EXT1",activeEquipmentLine="EXT1",pendingScan=null,scanSession=null;
+let activeProductLine="EXT1",activeEquipmentLine="EXT1",pendingScan=null,scanSession=null,cameraSession=null,cameraStream=null;
 
 function el(tag,cls="",text=""){const n=document.createElement(tag);if(cls)n.className=cls;if(text)n.textContent=text;return n}
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
@@ -62,6 +62,7 @@ function hasValue(v){return String(v??"").trim()!==""}
 function num(v){return hasValue(v)&&Number.isFinite(Number(v))?Number(v):null}
 function fmt(v,d=2){const n=num(v);if(n===null)return"—";return new Intl.NumberFormat("en-US",{minimumFractionDigits:0,maximumFractionDigits:d}).format(n)}
 function formatDate(v){if(!v)return"—";return new Date(v+"T12:00:00").toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"})}
+function updateDateDisplay(){const d=$("dateDisplay");if(d)d.textContent=formatDate($("date")?.value||state.meta.date)}
 function format12h(v){if(!v)return"—";const m=String(v).match(/^(\d{1,2}):(\d{2})/);if(!m)return v;let h=Number(m[1]);const ampm=h>=12?"PM":"AM";h=h%12||12;return`${h}:${m[2]} ${ampm}`}
 function lineCo2Pct(line){const b=num(state.productivity[line].butane),c=num(state.productivity[line].co2);if(b===null||c===null)return null;const total=b+c;return total>0?c/total*100:0}
 
@@ -81,7 +82,7 @@ function load(){
   let raw=localStorage.getItem(KEY);if(!raw){for(const k of OLD_KEYS){raw=localStorage.getItem(k);if(raw)break}}
   if(raw){try{mergeState(JSON.parse(raw))}catch(e){}}
   if(!state.meta.date)state.meta.date=new Date().toISOString().slice(0,10);
-  $("date").value=state.meta.date;$("lead").value=state.meta.lead||"";$("shift").value=state.meta.shift||"C";
+  $("date").value=state.meta.date;$("lead").value=state.meta.lead||"";$("shift").value=state.meta.shift||"C";updateDateDisplay();
 }
 
 function sectionCard(title,hint=""){const c=el("div","card"),t=el("div","section-title");t.appendChild(el("h2","",title));if(hint)t.appendChild(el("span","hint",hint));c.appendChild(t);return c}
@@ -101,16 +102,15 @@ function statusClass(value,rule){
 
 function photoButton(kind,label){
   const b=el("button","photo-btn",label);b.type="button";
-  const inp=document.createElement("input");inp.type="file";inp.accept="image/*";inp.style.display="none";
-  inp.onchange=()=>{const f=inp.files?.[0];inp.value="";if(f)startPhotoScan(kind,f)};
-  b.onclick=()=>inp.click();const frag=document.createDocumentFragment();frag.append(b,inp);return frag;
+  b.onclick=()=>openCameraScanner(kind);
+  return b;
 }
 
 function renderProductivity(){
   const host=$("productivity");host.innerHTML="";
   const c=sectionCard("Productivity / Blends","One line at a time — report combines all four lines");
   c.appendChild(lineSelector(activeProductLine,l=>activeProductLine=l,renderProductivity));
-  const tools=el("div","photo-tools");tools.appendChild(photoButton("control","📷 Upload Photo — Control"));tools.appendChild(photoButton("blend","📷 Upload Photo — Blend"));tools.appendChild(el("div","photo-help","Take a photo or choose one from Photos. Align the EPIC screen, review every detected value, then apply it to the selected line."));c.appendChild(tools);
+  const tools=el("div","photo-tools");tools.appendChild(photoButton("control","📷 Scan Screen — Control"));tools.appendChild(photoButton("blend","📷 Scan Screen — Blend"));tools.appendChild(el("div","photo-help","Point the phone at the EPIC screen and scan it. You can also choose a saved photo. Every detected value is reviewed before it is applied."));c.appendChild(tools);
 
   const grid=el("div","field-grid");
   productivityFields.forEach(([key,label,type,meta,rule])=>{const f=el("label","field "+statusClass(state.productivity[activeProductLine][key],rule));f.appendChild(document.createTextNode(label));const i=document.createElement("input");i.type=type;if(type==="number"){i.inputMode="decimal";i.step="any"}i.value=state.productivity[activeProductLine][key]??"";i.oninput=()=>{state.productivity[activeProductLine][key]=i.value;save();renderProductivitySoft()};f.appendChild(i);if(meta)f.appendChild(el("span","meta",meta));grid.appendChild(f)});c.appendChild(grid);
@@ -129,9 +129,12 @@ const scanFieldLabels={
   blend:{virgin1:"Virgin 1",fluff:"Fluff",talc:"Talc",virgin2:"Virgin 2"}
 };
 
-function defaultFrame(img){
-  if(img.naturalHeight>img.naturalWidth){return[{x:.006,y:.377},{x:.995,y:.365},{x:.985,y:.755},{x:.008,y:.750}]}
-  return[{x:.035,y:.06},{x:.965,y:.06},{x:.965,y:.94},{x:.035,y:.94}];
+function defaultFrame(img,kind=scanSession?.kind){
+  if(img.naturalHeight>img.naturalWidth){
+    if(kind==="blend")return[{x:.004,y:.347},{x:.996,y:.337},{x:.996,y:.833},{x:.004,y:.821}];
+    return[{x:.006,y:.374},{x:.995,y:.361},{x:.988,y:.792},{x:.008,y:.789}];
+  }
+  return[{x:.02,y:.04},{x:.98,y:.04},{x:.98,y:.96},{x:.02,y:.96}];
 }
 function updateFrameOverlay(){
   if(!scanSession)return;const wrap=$("frameWrap"),r=wrap.getBoundingClientRect();
@@ -146,10 +149,77 @@ function bindFrameHandles(){
   });
 }
 function cleanupScan(){if(scanSession?.objectUrl)URL.revokeObjectURL(scanSession.objectUrl);scanSession=null;pendingScan=null}
-function startPhotoScan(kind,file){
-  cleanupScan();const url=URL.createObjectURL(file);scanSession={kind,line:activeProductLine,file,objectUrl:url,points:null,drag:null};pendingScan=null;
-  $("scanTitle").textContent=`${kind==="control"?"Control":"Blend"} photo — ${activeProductLine}`;$("frameStage").classList.remove("hidden");$("resultStage").classList.add("hidden");
-  const img=$("frameImage");img.onload=()=>{scanSession.points=defaultFrame(img);updateFrameOverlay()};img.src=url;$("scanDialog").showModal();
+
+function stopCamera(){
+  if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null}
+  const v=$("cameraVideo");if(v)v.srcObject=null;
+}
+async function openCameraScanner(kind){
+  stopCamera();cameraSession={kind,line:activeProductLine};
+  $("cameraTitle").textContent=`${kind==="control"?"Control":"Blend"} scan — ${activeProductLine}`;
+  $("cameraGuide").style.aspectRatio=kind==="blend"?"1.58 / 1":"1.72 / 1";
+  $("cameraStatus").textContent="Starting camera…";
+  $("cameraNotice").className="scan-notice info";
+  $("cameraNotice").textContent="Fit the light EPIC screen inside the blue frame, hold steady, then tap Scan Screen.";
+  $("cameraDialog").showModal();
+  try{
+    if(!navigator.mediaDevices?.getUserMedia)throw new Error("Live camera is not available in this browser.");
+    cameraStream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},
+      audio:false
+    });
+    const v=$("cameraVideo");v.srcObject=cameraStream;await v.play();
+    $("cameraStatus").textContent="Camera ready — fill the blue frame with the EPIC screen.";
+  }catch(e){
+    $("cameraStatus").textContent="Live camera unavailable. Use Choose Photo.";
+    $("cameraNotice").className="scan-notice bad";
+    $("cameraNotice").textContent=(e?.message||"Camera could not start.")+" You can still take or choose a photo.";
+  }
+}
+function canvasToFile(canvas,name){
+  return new Promise((resolve,reject)=>{
+    if(canvas.toBlob)canvas.toBlob(b=>b?resolve(new File([b],name,{type:"image/jpeg"})):reject(new Error("Could not capture the camera image.")),"image/jpeg",.94);
+    else{
+      try{const data=canvas.toDataURL("image/jpeg",.94),bin=atob(data.split(",")[1]),a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);resolve(new File([a],name,{type:"image/jpeg"}))}catch(e){reject(e)}
+    }
+  });
+}
+async function captureCameraScreen(){
+  if(!cameraSession)return;
+  const v=$("cameraVideo");if(!v?.videoWidth||!v?.videoHeight){$("cameraStatus").textContent="Camera is not ready yet.";return}
+  const view=$("cameraView").getBoundingClientRect(),guide=$("cameraGuide").getBoundingClientRect();
+  const vw=v.videoWidth,vh=v.videoHeight,scale=Math.max(view.width/vw,view.height/vh);
+  const shownW=vw*scale,shownH=vh*scale,offX=(shownW-view.width)/2,offY=(shownH-view.height)/2;
+  let sx=(guide.left-view.left+offX)/scale,sy=(guide.top-view.top+offY)/scale,sw=guide.width/scale,sh=guide.height/scale;
+  sx=Math.max(0,Math.min(vw-1,sx));sy=Math.max(0,Math.min(vh-1,sy));sw=Math.min(sw,vw-sx);sh=Math.min(sh,vh-sy);
+  const out=document.createElement("canvas"),targetW=1600;out.width=targetW;out.height=Math.round(targetW*(sh/sw));
+  out.getContext("2d",{alpha:false}).drawImage(v,sx,sy,sw,sh,0,0,out.width,out.height);
+  $("cameraStatus").textContent="Captured — reading EPIC…";
+  try{
+    const f=await canvasToFile(out,`epic-${cameraSession.kind}-${Date.now()}.jpg`);
+    const session={...cameraSession};stopCamera();$("cameraDialog").close();startPhotoScan(session.kind,f,{auto:true,line:session.line});
+  }catch(e){$("cameraStatus").textContent=e?.message||"Could not capture screen."}
+}
+function chooseCameraPhoto(){
+  if(!cameraSession)return;
+  $("cameraFallbackInput").click();
+}
+
+function startPhotoScan(kind,file,options={}){
+  cleanupScan();const url=URL.createObjectURL(file);scanSession={kind,line:options.line||activeProductLine,file,objectUrl:url,points:null,drag:null,auto:!!options.auto};pendingScan=null;
+  $("scanTitle").textContent=`${kind==="control"?"Control":"Blend"} scan — ${scanSession.line}`;
+  const img=$("frameImage");
+  img.onload=()=>{
+    scanSession.points=scanSession.auto?[{x:.002,y:.002},{x:.998,y:.002},{x:.998,y:.998},{x:.002,y:.998}]:defaultFrame(img,kind);
+    updateFrameOverlay();
+    if(scanSession.auto){
+      $("frameStage").classList.add("hidden");$("resultStage").classList.remove("hidden");
+      setTimeout(readAlignedPhoto,40);
+    }else{
+      $("frameStage").classList.remove("hidden");$("resultStage").classList.add("hidden");
+    }
+  };
+  img.src=url;$("scanDialog").showModal();
 }
 async function readAlignedPhoto(){
   if(!scanSession?.points)return;
@@ -217,17 +287,28 @@ function generateReport(){
 
   const report=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sr. Lead Report</title><style>
   @page{size:letter;margin:.38in}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1a2530;margin:0;background:#eef2f5}.toolbar{position:sticky;top:0;background:#0f3557;color:#fff;padding:10px;display:flex;gap:8px;justify-content:center;z-index:10}.toolbar button{border:0;border-radius:9px;padding:10px 14px;font-weight:700}.paper{max-width:900px;margin:18px auto;background:#fff;padding:26px;box-shadow:0 5px 25px #0002}.head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:4px solid #0f3557;padding-bottom:10px}h1{font-size:22px;margin:0;color:#0f3557}.dcn{font-size:10px;color:#677481}.meta{display:grid;grid-template-columns:1fr 1.8fr .55fr;gap:8px;margin:12px 0}.meta div{border:1px solid #cbd5de;border-radius:7px;padding:7px}.meta b{display:block;font-size:9px;text-transform:uppercase;color:#6c7884;margin-bottom:2px}.summary{background:#f1f6fa;border-left:5px solid #0f3557;padding:8px 10px;margin:10px 0;font-size:11px;font-weight:700}h2{font-size:13px;color:#0f3557;background:#eaf0f5;padding:6px;margin:12px 0 0;border:1px solid #c7d3dc}table{width:100%;border-collapse:collapse;font-size:9.4px}th,td{border:1px solid #c7d3dc;padding:4px;text-align:center;vertical-align:middle}th{text-align:left;background:#f8fafb}.cat{font-weight:700;text-align:left;width:95px}.yes{color:#1b6f3d;font-weight:800;background:#f0f8f3}.no{color:#b32e2e;font-weight:800;background:#fff1f1}.ok{color:#176b38;background:#eff8f2}.warn{color:#946200;background:#fff7dd}.bad{color:#aa2929;background:#fff0f0}.sheet{break-before:page}.keep{break-inside:avoid}.silo-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:10px 2px 4px}.silo-card{text-align:center}.silo-art{width:76px;height:105px;margin:0 auto 4px;position:relative}.silo-cap{position:absolute;top:2px;left:12px;width:52px;height:13px;border:3px solid #2f8a5b;border-bottom:0;border-radius:50% 50% 0 0;background:#ecf8f1}.silo-body{position:absolute;top:12px;left:12px;width:52px;height:60px;border:3px solid #2f8a5b;border-top:0;background:linear-gradient(#e6f6ed,#cfeedd);display:flex;align-items:center;justify-content:center}.silo-body span{font-weight:800;color:#236d48;font-size:9px}.silo-cone{position:absolute;top:72px;left:21px;width:0;height:0;border-left:17px solid transparent;border-right:17px solid transparent;border-top:22px solid #9fd9b7}.silo-leg{position:absolute;top:89px;width:3px;height:15px;background:#4c7660}.silo-leg.l1{left:25px}.silo-leg.l2{right:25px}.silo-lbs{font-weight:800;color:#0f3557;font-size:12px}.silo-lbs small{font-size:9px;color:#677481}.notes{min-height:90px;border:1px solid #c7d3dc;padding:8px;white-space:pre-wrap;font-size:10px}.foot{margin-top:12px;font-size:9px;color:#697681;display:flex;justify-content:space-between}@media print{body{background:white}.toolbar{display:none}.paper{margin:0;box-shadow:none;padding:0}.sheet{break-before:page}}@media(max-width:700px){.paper{margin:0;padding:10px}.meta{grid-template-columns:1fr 1.5fr .5fr}.silo-grid{grid-template-columns:repeat(5,1fr)}}
-  </style></head><body><div class="toolbar"><button onclick="window.print()">Print / Save PDF</button><button onclick="window.close()">Close</button></div><main class="paper"><div class="head"><div><h1>EXTRUSION SR. LEAD DAILY CHECKLIST</h1><div class="dcn">DCN TN-100-00003</div></div><div class="dcn">Digital Report</div></div><div class="meta"><div><b>Date</b>${escapeHtml(formatDate(state.meta.date))}</div><div><b>Sr. Lead</b>${escapeHtml(state.meta.lead||"—")}</div><div><b>Shift</b>${escapeHtml(state.meta.shift)}</div></div><div class="summary">${escapeHtml(summary)}</div><h2>SAFETY / FORK TRUCK / QUALITY / HOUSEKEEPING</h2><table>${safetyRows}</table><section class="sheet keep"><h2>PRODUCTIVITY / BLENDS</h2><table><thead><tr><th>Productivity</th><th>Plan</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${pRows}${gasRows}${pctRow}</tbody></table><table style="margin-top:6px"><thead><tr><th>Blends</th><th>Plan</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${blendRows}</tbody></table></section><section class="sheet"><h2>EQUIPMENT INSPECTION</h2><table><thead><tr><th>Item</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${eqRows}</tbody></table><table style="margin-top:7px"><tbody><tr><th>Pump Room Inspected</th><td>${state.common.pumpRoom||"—"}</td><th>Time</th><td>${escapeHtml(format12h(state.common.pumpTime))}</td></tr><tr><th>Mechanical Room Blower Powder Barrel Checked</th><td>${state.common.mechanicalBlower||"—"}</td><th>All screen packs clean and accounted</th><td>${state.common.screenPacks||"—"}</td></tr></tbody></table><h2>INVENTORY LEVELS</h2><div class="silo-grid">${silos}</div><table>${invRows}</table><h2>NOTES</h2><div class="notes">${escapeHtml(state.notes||"")}</div><div class="foot"><span>DCN TN-100-00003</span><span>Generated from Sr. Lead Checklist PWA v1.4</span></div></section></main></body></html>`;
+  </style></head><body><div class="toolbar"><button onclick="window.print()">Print / Save PDF</button><button onclick="window.close()">Close</button></div><main class="paper"><div class="head"><div><h1>EXTRUSION SR. LEAD DAILY CHECKLIST</h1><div class="dcn">DCN TN-100-00003</div></div><div class="dcn">Digital Report</div></div><div class="meta"><div><b>Date</b>${escapeHtml(formatDate(state.meta.date))}</div><div><b>Sr. Lead</b>${escapeHtml(state.meta.lead||"—")}</div><div><b>Shift</b>${escapeHtml(state.meta.shift)}</div></div><div class="summary">${escapeHtml(summary)}</div><h2>SAFETY / FORK TRUCK / QUALITY / HOUSEKEEPING</h2><table>${safetyRows}</table><section class="sheet keep"><h2>PRODUCTIVITY / BLENDS</h2><table><thead><tr><th>Productivity</th><th>Plan</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${pRows}${gasRows}${pctRow}</tbody></table><table style="margin-top:6px"><thead><tr><th>Blends</th><th>Plan</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${blendRows}</tbody></table></section><section class="sheet"><h2>EQUIPMENT INSPECTION</h2><table><thead><tr><th>Item</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${eqRows}</tbody></table><table style="margin-top:7px"><tbody><tr><th>Pump Room Inspected</th><td>${state.common.pumpRoom||"—"}</td><th>Time</th><td>${escapeHtml(format12h(state.common.pumpTime))}</td></tr><tr><th>Mechanical Room Blower Powder Barrel Checked</th><td>${state.common.mechanicalBlower||"—"}</td><th>All screen packs clean and accounted</th><td>${state.common.screenPacks||"—"}</td></tr></tbody></table><h2>INVENTORY LEVELS</h2><div class="silo-grid">${silos}</div><table>${invRows}</table><h2>NOTES</h2><div class="notes">${escapeHtml(state.notes||"")}</div><div class="foot"><span>DCN TN-100-00003</span><span>Generated from Sr. Lead Checklist PWA v1.5</span></div></section></main></body></html>`;
   const w=window.open("","_blank");if(!w){alert("Allow pop-ups to generate the report.");return}w.document.open();w.document.write(report);w.document.close();
 }
 
 bindFrameHandles();
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));b.classList.add("active");$(b.dataset.target).classList.add("active")});
-["date","lead","shift"].forEach(id=>$(id).addEventListener("change",save));
+$("date").addEventListener("change",()=>{updateDateDisplay();save()});["lead","shift"].forEach(id=>$(id).addEventListener("change",save));
 $("saveBtn").onclick=()=>{save();const b=$("saveBtn"),old=b.textContent;b.textContent="Saved ✓";setTimeout(()=>b.textContent=old,900)};
 $("resetBtn").onclick=()=>{if(confirm("Clear the current shift checklist?")){localStorage.removeItem(KEY);OLD_KEYS.forEach(k=>localStorage.removeItem(k));location.reload()}};
 $("reportBtn").onclick=generateReport;
-$("frameReset").onclick=()=>{if(scanSession){scanSession.points=defaultFrame($("frameImage"));updateFrameOverlay()}};
+
+$("cameraCapture").onclick=captureCameraScreen;
+$("choosePhotoBtn").onclick=chooseCameraPhoto;
+$("cameraClose").onclick=()=>$("cameraDialog").close();
+$("cameraDialog").addEventListener("close",stopCamera);
+$("cameraFallbackInput").onchange=()=>{
+  const f=$("cameraFallbackInput").files?.[0];$("cameraFallbackInput").value="";
+  if(!f||!cameraSession)return;
+  const session={...cameraSession};stopCamera();$("cameraDialog").close();startPhotoScan(session.kind,f,{auto:false,line:session.line});
+};
+
+$("frameReset").onclick=()=>{if(scanSession){scanSession.points=defaultFrame($("frameImage"),scanSession.kind);updateFrameOverlay()}};
 $("scanRead").onclick=readAlignedPhoto;
 $("scanBack").onclick=()=>{$("resultStage").classList.add("hidden");$("frameStage").classList.remove("hidden");setTimeout(updateFrameOverlay,20)};
 $("scanApply").onclick=applyPendingScan;

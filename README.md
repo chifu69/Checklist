@@ -1,4 +1,4 @@
-# Extrusion Sr. Lead Daily Checklist — v1.4
+# Extrusion Sr. Lead Daily Checklist — v1.5
 
 Phone-friendly PWA based on the supplied Sr. Lead Daily Checklist, with a modern printable report and an EPIC photo reader.
 
@@ -67,3 +67,13 @@ Serve the folder through HTTP/HTTPS. For simple PC testing inside the folder:
 Then open `http://localhost:8080`.
 
 For iPhone installation, host it over HTTPS and use Add to Home Screen.
+
+
+## v1.5 live EPIC scanner
+- Date uses a custom phone-friendly display so iOS cannot visually overlap Date and Shift.
+- Control and Blend buttons now open a live rear-camera scanner when the browser permits camera access.
+- Align the light EPIC screen inside the blue 1.72:1 guide and tap **Scan Screen**.
+- The captured guide area is cropped before OCR, reducing background, bezel, wall, and perspective noise.
+- Saved-photo fallback remains available and keeps the four-corner fine adjustment.
+- Numeric OCR now uses a tighter crop, larger upscale, contrast normalization, numeric-only recognition, and multiple segmentation fallbacks.
+- All detected values remain review-before-apply; the scanner never silently commits readings.
