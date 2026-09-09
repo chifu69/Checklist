@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0f3557" />
+  <title>Extrusion Sr. Lead Checklist</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">EXTRUSION</div>
+      <h1>Sr. Lead Daily Checklist</h1>
+    </div>
+    <button id="settingsBtn" class="icon-btn" aria-label="Settings">⚙️</button>
+  </header>
+
+  <main class="shell">
+    <section class="card shift-card">
+      <div class="grid-3">
+        <label>Date<input id="date" type="date"></label>
+        <label>Sr. Lead<input id="lead" type="text" placeholder="Name"></label>
+        <label>Shift<select id="shift"><option>A</option><option>B</option><option>C</option><option>D</option></select></label>
+      </div>
+      <div class="progress-wrap">
+        <div class="progress-label"><span>Checklist progress</span><strong id="progressText">0%</strong></div>
+        <div class="progress"><div id="progressBar"></div></div>
+      </div>
+    </section>
+
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-target="safety">Safety</button>
+      <button class="tab" data-target="productivity">Productivity</button>
+      <button class="tab" data-target="blends">Blends</button>
+      <button class="tab" data-target="equipment">Equipment</button>
+      <button class="tab" data-target="inventory">Inventory</button>
+      <button class="tab" data-target="trim">Trim / Notes</button>
+    </nav>
+
+    <section id="safety" class="panel active"></section>
+    <section id="productivity" class="panel"></section>
+    <section id="blends" class="panel"></section>
+    <section id="equipment" class="panel"></section>
+    <section id="inventory" class="panel"></section>
+    <section id="trim" class="panel"></section>
+
+    <section class="actions card">
+      <button id="saveBtn" class="secondary">Save</button>
+      <button id="resetBtn" class="danger ghost">Clear Shift</button>
+      <button id="reportBtn" class="primary">Generate Report</button>
+    </section>
+  </main>
+
+  <dialog id="settingsDialog">
+    <form method="dialog" class="dialog-card">
+      <h2>Settings</h2>
+      <label>Roll Count app URL
+        <input id="rollCountUrl" type="url" placeholder="Optional">
+      </label>
+      <p class="small">If added, the Roll Count button opens your separate Roll Count app. Roll counts are not duplicated here.</p>
+      <div class="dialog-actions">
+        <button value="cancel" class="secondary">Cancel</button>
+        <button id="saveSettings" value="default" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

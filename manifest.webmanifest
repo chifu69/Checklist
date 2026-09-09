@@ -1,0 +1,9 @@
+{
+  "name": "Extrusion Sr. Lead Daily Checklist",
+  "short_name": "Sr Lead",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#eef3f7",
+  "theme_color": "#0f3557",
+  "icons": []
+}
