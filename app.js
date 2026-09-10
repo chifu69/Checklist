@@ -126,36 +126,138 @@ function renderEquipment(){
   const tm=el("label","field");tm.appendChild(document.createTextNode("Pump Room Time"));const ti=document.createElement("input");ti.type="time";ti.value=state.common.pumpTime||"";ti.oninput=()=>{state.common.pumpTime=ti.value;save()};tm.appendChild(ti);common.appendChild(tm);
   const open=el("button","secondary","Open Roll Count App");open.type="button";open.style.marginTop="12px";open.onclick=()=>{const s=JSON.parse(localStorage.getItem(SETTINGS_KEY)||"{}");if(s.rollCountUrl)window.open(s.rollCountUrl,"_blank");else $("settingsDialog").showModal()};common.appendChild(open);host.appendChild(common);
 }
+function siloStatus(value){
+  const n=num(value);if(n===null)return"";
+  return n>100000?"ok":n>=50000?"warn":"bad";
+}
 function renderInventory(){
-  const host=$("inventory");host.innerHTML="";const c=sectionCard("Inventory Levels","Silo #1–#5 are pounds only"),grid=el("div","inventory-grid");
-  const fields=[["talcBoxes","Talc (boxes)","14 boxes minimum"],["silo1","Silo #1 Inventory","lb"],["silo2","Silo #2 Inventory","lb"],["silo3","Silo #3 Inventory","lb"],["silo4","Silo #4 Inventory","lb"],["silo5","Silo #5 Inventory","lb"],["butane","Butane Tank","%"],["co2","CO₂","lb"]];
-  fields.forEach(([key,label,unit])=>{const low=key==="talcBoxes"&&hasValue(state.inventory[key])&&Number(state.inventory[key])<14,f=el("label","inventory-item"+(low?" low":""));f.appendChild(document.createTextNode(label));const i=document.createElement("input");i.type="number";i.inputMode="decimal";i.step="any";i.value=state.inventory[key]??"";i.oninput=()=>{state.inventory[key]=i.value;save();if(key==="talcBoxes")renderInventory()};f.appendChild(i);f.appendChild(el("span","meta",unit));if(low)f.appendChild(el("span","badge bad","LOW"));grid.appendChild(f)});c.appendChild(grid);host.appendChild(c);
+  const host=$("inventory");host.innerHTML="";
+  const c=sectionCard("Inventory Levels","Silos: >100,000 green · 50,000–100,000 yellow · <50,000 red");
+  const grid=el("div","inventory-grid");
+  const fields=[
+    ["talcBoxes","Talc (boxes)","14 boxes minimum"],
+    ["silo1","Silo #1 Inventory","lb"],["silo2","Silo #2 Inventory","lb"],["silo3","Silo #3 Inventory","lb"],
+    ["silo4","Silo #4 Inventory","lb"],["silo5","Silo #5 Inventory","lb"],
+    ["butane","Butane Tank","%"],["co2","CO₂",""]
+  ];
+  fields.forEach(([key,label,unit])=>{
+    const isTalc=key==="talcBoxes";
+    const talcLow=isTalc&&hasValue(state.inventory[key])&&Number(state.inventory[key])<14;
+    const siloKey=/^silo[1-5]$/.test(key);
+    const siloCls=siloKey?siloStatus(state.inventory[key]):"";
+    const cls=["inventory-item",talcLow?"bad":isTalc&&hasValue(state.inventory[key])?"ok":"",siloCls].filter(Boolean).join(" ");
+    const f=el("label",cls);
+    f.appendChild(document.createTextNode(label));
+    const i=document.createElement("input");i.type="number";i.inputMode="decimal";i.step="any";i.value=state.inventory[key]??"";
+    i.oninput=()=>{state.inventory[key]=i.value;save();if(isTalc||siloKey)renderInventory()};
+    f.appendChild(i);
+    if(unit)f.appendChild(el("span","meta",unit));
+    if(talcLow)f.appendChild(el("span","badge bad","BELOW MINIMUM"));
+    grid.appendChild(f);
+  });
+  c.appendChild(grid);host.appendChild(c);
 }
 function renderNotes(){const host=$("notes");host.innerHTML="";const c=sectionCard("Notes"),lab=el("label","big-note"),ta=document.createElement("textarea");ta.placeholder="Shift notes, issues, follow-up…";ta.value=state.notes||"";ta.oninput=()=>{state.notes=ta.value;save()};lab.appendChild(ta);c.appendChild(lab);host.appendChild(c)}
 function updateProgress(){
   let total=0,done=0;safetyItems.forEach(([k])=>{total++;if(state.safety[k])done++});LINES.forEach(l=>{productivityFields.forEach(([k])=>{total++;if(hasValue(state.productivity[l][k]))done++});["butane","co2"].forEach(k=>{total++;if(hasValue(state.productivity[l][k]))done++});blendFields.forEach(([k])=>{total++;if(hasValue(state.blends[l][k]))done++});equipmentFields.forEach(([k])=>{total++;if(hasValue(state.equipment[l][k]))done++})});["pumpRoom","mechanicalBlower","screenPacks"].forEach(k=>{total++;if(hasValue(state.common[k]))done++});Object.keys(state.inventory).forEach(k=>{total++;if(hasValue(state.inventory[k]))done++});const pct=total?Math.round(done/total*100):0;$("progressText").textContent=pct+"%";$("progressBar").style.width=pct+"%";
 }
 
-function reportValue(value,rule,suffix=""){if(!hasValue(value))return"—";const c=statusClass(value,rule),mark=(c==="status-bad"||c==="status-warn")?"●":"";return`<span class="${c.replace("status-","")}">${escapeHtml(value)}${suffix}${mark?` <b>${mark}</b>`:""}</span>`}
-function siloCard(i,value){return`<div class="silo-card"><div class="silo-art"><div class="silo-cap"></div><div class="silo-body"><span>SILO ${i}</span></div><div class="silo-cone"></div><div class="silo-leg l1"></div><div class="silo-leg l2"></div></div><div class="silo-lbs">${hasValue(value)?fmt(value):"—"} <small>lb</small></div></div>`}
+function reportValue(value,rule,suffix=""){
+  if(!hasValue(value))return"—";
+  const c=statusClass(value,rule),mark=(c==="status-bad"||c==="status-warn")?"●":"";
+  return`<span class="${c.replace("status-","")}">${escapeHtml(value)}${suffix}${mark?` <b>${mark}</b>`:""}</span>`;
+}
+function issueDetail(line,key,label,rule){
+  const value=state.productivity[line][key],n=num(value);
+  if(n===null||statusClass(value,rule)!=="status-bad")return null;
+  const info={
+    diePressure:[" PSI","1800–2000 PSI"],
+    dieMelt:[" °F","300–305 °F"],
+    outsideAir:[" PSI","3–8 PSI"],
+    insideAir:[" PSI","20–50 PSI"],
+    primaryLoad:["%","<80%"],
+    secondaryLoad:["%","<80%"],
+    differential:[" PSI","≤800 PSI"]
+  }[key]||["","target range"];
+  let direction="";
+  if(rule?.min!==undefined&&rule?.min!==null&&n<rule.min)direction="LOW";
+  else if(rule?.max!==undefined&&rule?.max!==null&&n>rule.max)direction="HIGH";
+  else if(rule?.kind==="strictMax"&&n>=rule.max)direction="HIGH";
+  else if(rule?.kind==="differential"&&n>800)direction="HIGH";
+  return`${line} — ${label}: ${fmt(n)}${info[0]}${direction?` — ${direction}`:""} (${info[1]})`;
+}
+function siloCard(i,value){
+  const cls=siloStatus(value);
+  return`<div class="silo-card ${cls}"><div class="silo-art"><div class="silo-cap"></div><div class="silo-body"><span>SILO ${i}</span></div><div class="silo-cone"></div><div class="silo-leg l1"></div><div class="silo-leg l2"></div></div><div class="silo-lbs">${hasValue(value)?fmt(value):"—"} <small>lb</small></div></div>`;
+}
+function safeScriptJson(obj){return JSON.stringify(obj).replace(/</g,"\\u003c")}
 function generateReport(){
   save();
+
   const safetyRows=safetyItems.map(([k,cat,label])=>`<tr><td class="cat">${escapeHtml(cat)}</td><td class="${state.safety[k]?"yes":""}">${state.safety[k]?"☑":"☐"}</td><td>${escapeHtml(label)}</td></tr>`).join("");
   const pRows=productivityFields.map(([k,label,t,meta,rule])=>`<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(meta?meta.replace("Plan: ",""):"—")}</td>${LINES.map(l=>`<td>${reportValue(state.productivity[l][k],rule)}</td>`).join("")}</tr>`).join("");
   const gasRows=[["butane","Butane","lb/hr"],["co2","CO₂","lb/hr"]].map(([k,label,u])=>`<tr><th>${label}</th><td>${u}</td>${LINES.map(l=>`<td>${hasValue(state.productivity[l][k])?escapeHtml(fmt(state.productivity[l][k])):"—"}</td>`).join("")}</tr>`).join("");
   const pctRow=`<tr><th>CO₂ %</th><td>CO₂ ÷ (Butane + CO₂)</td>${LINES.map(l=>{const p=lineCo2Pct(l),cls=p===null?"":p>=15?"ok":"warn";return`<td class="${cls}">${p===null?"—":fmt(p)+"%"}</td>`}).join("")}</tr>`;
   const blendRows=blendFields.map(([k,label])=>`<tr><th>${escapeHtml(label)}</th><td>—</td>${LINES.map(l=>`<td>${escapeHtml(state.blends[l][k]||"—")}</td>`).join("")}</tr>`).join("");
   const eqRows=equipmentFields.map(([k,label,good])=>`<tr><th>${escapeHtml(label)}</th>${LINES.map(l=>{const v=state.equipment[l][k]||"",cls=!v?"":v===good?"yes":"no";return`<td class="${cls}">${v||"—"}</td>`}).join("")}</tr>`).join("");
-  const invRows=[["Talc (14 Boxes Minimum)",state.inventory.talcBoxes," boxes"],["Butane Tank",state.inventory.butane," %"],["CO₂",state.inventory.co2," lb"]].map(([a,b,u])=>`<tr><th>${a}</th><td>${hasValue(b)?escapeHtml(fmt(b))+u:"—"}</td></tr>`).join("");
+
+  const talcN=num(state.inventory.talcBoxes);
+  const talcCls=talcN===null?"":talcN<14?"bad":"ok";
+  const invRows=[
+    `<tr><th>Talc (14 Boxes Minimum)</th><td class="${talcCls}">${talcN===null?"—":escapeHtml(fmt(talcN))+" boxes"}</td></tr>`,
+    `<tr><th>Butane Tank</th><td>${hasValue(state.inventory.butane)?escapeHtml(fmt(state.inventory.butane))+" %":"—"}</td></tr>`,
+    `<tr><th>CO₂</th><td>${hasValue(state.inventory.co2)?escapeHtml(fmt(state.inventory.co2)):"—"}</td></tr>`
+  ].join("");
+
   const silos=[1,2,3,4,5].map(i=>siloCard(i,state.inventory[`silo${i}`])).join("");
-  const problems=[];LINES.forEach(l=>productivityFields.forEach(([k,label,t,m,rule])=>{if(statusClass(state.productivity[l][k],rule)==="status-bad")problems.push(`${l}: ${label}`)}));if(hasValue(state.inventory.talcBoxes)&&Number(state.inventory.talcBoxes)<14)problems.push("Talc below 14-box minimum");LINES.forEach(l=>equipmentFields.forEach(([k,label,good])=>{const v=state.equipment[l][k];if(v&&v!==good)problems.push(`${l}: ${label}`)}));const summary=problems.length?`⚠ ${problems.length} item(s) need attention`:"✓ No automatic exceptions detected";
+
+  const problems=[];
+  LINES.forEach(l=>productivityFields.forEach(([k,label,t,m,rule])=>{const p=issueDetail(l,k,label,rule);if(p)problems.push(p)}));
+  if(talcN!==null&&talcN<14)problems.push(`Talc Inventory: ${fmt(talcN)} boxes — BELOW MINIMUM (14 boxes)`);
+  [1,2,3,4,5].forEach(i=>{const v=num(state.inventory[`silo${i}`]);if(v!==null&&v<50000)problems.push(`Silo ${i}: ${fmt(v)} lb — LOW (<50,000 lb)`)});
+  LINES.forEach(l=>equipmentFields.forEach(([k,label,good])=>{const v=state.equipment[l][k];if(v&&v!==good)problems.push(`${l} — ${label}: ${v==="Y"?"YES":"NO"}`)}));
+  [["pumpRoom","Pump Room Inspected"],["mechanicalBlower","Mechanical Room Blower Powder Barrel Checked"],["screenPacks","All screen packs clean and accounted"]].forEach(([k,label])=>{if(state.common[k]==="N")problems.push(`${label}: NO`)});
+
+  const summaryHtml=problems.length
+    ?`<div class="summary-title">⚠ ${problems.length} item(s) need attention</div><ul>${problems.map(p=>`<li>${escapeHtml(p)}</li>`).join("")}</ul>`
+    :`<div class="summary-title good-summary">✓ No automatic exceptions detected</div>`;
+
+  const shareData={
+    meta:{date:formatDate(state.meta.date),dateRaw:state.meta.date,lead:state.meta.lead||"—",shift:state.meta.shift},
+    safety:safetyItems.map(([k,cat,label])=>({cat,label,done:!!state.safety[k]})),
+    productivity:productivityFields.map(([k,label,t,meta,rule])=>({
+      key:k,label,plan:meta?meta.replace("Plan: ",""):"—",
+      values:LINES.map(l=>({line:l,value:state.productivity[l][k]??"",status:statusClass(state.productivity[l][k],rule)}))
+    })),
+    gas:["butane","co2"].map(k=>({key:k,label:k==="butane"?"Butane":"CO2",unit:"lb/hr",values:LINES.map(l=>state.productivity[l][k]??"")})),
+    co2Pct:LINES.map(l=>lineCo2Pct(l)),
+    blends:blendFields.map(([k,label])=>({key:k,label,values:LINES.map(l=>state.blends[l][k]??"")})),
+    equipment:equipmentFields.map(([k,label,good])=>({key:k,label,good,values:LINES.map(l=>state.equipment[l][k]??"")})),
+    common:{pumpRoom:state.common.pumpRoom||"",pumpTime:format12h(state.common.pumpTime),mechanicalBlower:state.common.mechanicalBlower||"",screenPacks:state.common.screenPacks||""},
+    inventory:{...state.inventory},
+    notes:state.notes||"",
+    problems
+  };
+  const shareJson=safeScriptJson(shareData);
 
   const report=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sr. Lead Report</title><style>
-  @page{size:letter;margin:.38in}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1a2530;margin:0;background:#eef2f5}.toolbar{position:sticky;top:0;background:#0f3557;color:#fff;padding:10px;display:flex;gap:8px;justify-content:center;z-index:10}.toolbar button{border:0;border-radius:9px;padding:10px 14px;font-weight:700}.paper{max-width:900px;margin:18px auto;background:#fff;padding:26px;box-shadow:0 5px 25px #0002}.head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:4px solid #0f3557;padding-bottom:10px}h1{font-size:22px;margin:0;color:#0f3557}.dcn{font-size:10px;color:#677481}.meta{display:grid;grid-template-columns:1fr 1.8fr .55fr;gap:8px;margin:12px 0}.meta div{border:1px solid #cbd5de;border-radius:7px;padding:7px}.meta b{display:block;font-size:9px;text-transform:uppercase;color:#6c7884;margin-bottom:2px}.summary{background:#f1f6fa;border-left:5px solid #0f3557;padding:8px 10px;margin:10px 0;font-size:11px;font-weight:700}h2{font-size:13px;color:#0f3557;background:#eaf0f5;padding:6px;margin:12px 0 0;border:1px solid #c7d3dc}table{width:100%;border-collapse:collapse;font-size:9.4px}th,td{border:1px solid #c7d3dc;padding:4px;text-align:center;vertical-align:middle}th{text-align:left;background:#f8fafb}.cat{font-weight:700;text-align:left;width:95px}.yes{color:#1b6f3d;font-weight:800;background:#f0f8f3}.no{color:#b32e2e;font-weight:800;background:#fff1f1}.ok{color:#176b38;background:#eff8f2}.warn{color:#946200;background:#fff7dd}.bad{color:#aa2929;background:#fff0f0}.sheet{break-before:page}.keep{break-inside:avoid}.silo-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:10px 2px 4px}.silo-card{text-align:center}.silo-art{width:76px;height:105px;margin:0 auto 4px;position:relative}.silo-cap{position:absolute;top:2px;left:12px;width:52px;height:13px;border:3px solid #2f8a5b;border-bottom:0;border-radius:50% 50% 0 0;background:#ecf8f1}.silo-body{position:absolute;top:12px;left:12px;width:52px;height:60px;border:3px solid #2f8a5b;border-top:0;background:linear-gradient(#e6f6ed,#cfeedd);display:flex;align-items:center;justify-content:center}.silo-body span{font-weight:800;color:#236d48;font-size:9px}.silo-cone{position:absolute;top:72px;left:21px;width:0;height:0;border-left:17px solid transparent;border-right:17px solid transparent;border-top:22px solid #9fd9b7}.silo-leg{position:absolute;top:89px;width:3px;height:15px;background:#4c7660}.silo-leg.l1{left:25px}.silo-leg.l2{right:25px}.silo-lbs{font-weight:800;color:#0f3557;font-size:12px}.silo-lbs small{font-size:9px;color:#677481}.notes{min-height:90px;border:1px solid #c7d3dc;padding:8px;white-space:pre-wrap;font-size:10px}.foot{margin-top:12px;font-size:9px;color:#697681;display:flex;justify-content:space-between}@media print{body{background:white}.toolbar{display:none}.paper{margin:0;box-shadow:none;padding:0}.sheet{break-before:page}}@media(max-width:700px){.paper{margin:0;padding:10px}.meta{grid-template-columns:1fr 1.5fr .5fr}.silo-grid{grid-template-columns:repeat(5,1fr)}}
-  </style></head><body><div class="toolbar"><button onclick="window.print()">Print / Save PDF</button><button onclick="window.close()">Close</button></div><main class="paper"><div class="head"><div><h1>EXTRUSION SR. LEAD DAILY CHECKLIST</h1><div class="dcn">DCN TN-100-00003</div></div><div class="dcn">Digital Report</div></div><div class="meta"><div><b>Date</b>${escapeHtml(formatDate(state.meta.date))}</div><div><b>Sr. Lead</b>${escapeHtml(state.meta.lead||"—")}</div><div><b>Shift</b>${escapeHtml(state.meta.shift)}</div></div><div class="summary">${escapeHtml(summary)}</div><h2>SAFETY / FORK TRUCK / QUALITY / HOUSEKEEPING</h2><table>${safetyRows}</table><section class="sheet keep"><h2>PRODUCTIVITY / BLENDS</h2><table><thead><tr><th>Productivity</th><th>Plan</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${pRows}${gasRows}${pctRow}</tbody></table><table style="margin-top:6px"><thead><tr><th>Blends</th><th>Plan</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${blendRows}</tbody></table></section><section class="sheet"><h2>EQUIPMENT INSPECTION</h2><table><thead><tr><th>Item</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${eqRows}</tbody></table><table style="margin-top:7px"><tbody><tr><th>Pump Room Inspected</th><td>${state.common.pumpRoom||"—"}</td><th>Time</th><td>${escapeHtml(format12h(state.common.pumpTime))}</td></tr><tr><th>Mechanical Room Blower Powder Barrel Checked</th><td>${state.common.mechanicalBlower||"—"}</td><th>All screen packs clean and accounted</th><td>${state.common.screenPacks||"—"}</td></tr></tbody></table><h2>INVENTORY LEVELS</h2><div class="silo-grid">${silos}</div><table>${invRows}</table><h2>NOTES</h2><div class="notes">${escapeHtml(state.notes||"")}</div><div class="foot"><span>DCN TN-100-00003</span></div></section></main></body></html>`;
-  const w=window.open("","_blank");if(!w){alert("Allow pop-ups to generate the report.");return}w.document.open();w.document.write(report);w.document.close();
-}
+  @page{size:letter;margin:.38in}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1a2530;margin:0;background:#eef2f5}.toolbar{position:sticky;top:0;background:#0f3557;color:#fff;padding:10px;display:flex;gap:8px;justify-content:center;z-index:10}.toolbar button{border:0;border-radius:9px;padding:10px 14px;font-weight:700}.toolbar button:disabled{opacity:.55}.paper{max-width:900px;margin:18px auto;background:#fff;padding:26px;box-shadow:0 5px 25px #0002}.head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:4px solid #0f3557;padding-bottom:10px}h1{font-size:22px;margin:0;color:#0f3557}.dcn{font-size:10px;color:#677481}.meta{display:grid;grid-template-columns:1fr 1.8fr .55fr;gap:8px;margin:12px 0}.meta div{border:1px solid #cbd5de;border-radius:7px;padding:7px}.meta b{display:block;font-size:9px;text-transform:uppercase;color:#6c7884;margin-bottom:2px}.summary{background:#fff7dd;border-left:5px solid #c98900;padding:8px 10px;margin:10px 0;font-size:11px}.summary-title{font-weight:800}.summary-title.good-summary{color:#176b38}.summary ul{margin:6px 0 0 18px;padding:0}.summary li{margin:3px 0;font-weight:700}h2{font-size:13px;color:#0f3557;background:#eaf0f5;padding:6px;margin:12px 0 0;border:1px solid #c7d3dc}table{width:100%;border-collapse:collapse;font-size:9.4px}th,td{border:1px solid #c7d3dc;padding:4px;text-align:center;vertical-align:middle}th{text-align:left;background:#f8fafb}.cat{font-weight:700;text-align:left;width:95px}.yes{color:#1b6f3d;font-weight:800;background:#f0f8f3}.no{color:#b32e2e;font-weight:800;background:#fff1f1}.ok{color:#176b38;background:#eff8f2}.warn{color:#946200;background:#fff7dd}.bad{color:#aa2929;background:#fff0f0;font-weight:800}.sheet{break-before:page}.keep{break-inside:avoid}.silo-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:10px 2px 4px}.silo-card{--silo:#7b8995;--silo-fill:#edf1f4;--silo-cone:#cbd5dd;--silo-text:#5e6b77;text-align:center}.silo-card.ok{--silo:#2f8a5b;--silo-fill:#ddf3e6;--silo-cone:#9fd9b7;--silo-text:#176b38}.silo-card.warn{--silo:#c18a12;--silo-fill:#fff1bd;--silo-cone:#f0cc6a;--silo-text:#946200}.silo-card.bad{--silo:#bd3d3d;--silo-fill:#ffe1e1;--silo-cone:#e99898;--silo-text:#aa2929}.silo-art{width:76px;height:105px;margin:0 auto 4px;position:relative}.silo-cap{position:absolute;top:2px;left:12px;width:52px;height:13px;border:3px solid var(--silo);border-bottom:0;border-radius:50% 50% 0 0;background:var(--silo-fill)}.silo-body{position:absolute;top:12px;left:12px;width:52px;height:60px;border:3px solid var(--silo);border-top:0;background:var(--silo-fill);display:flex;align-items:center;justify-content:center}.silo-body span{font-weight:800;color:var(--silo-text);font-size:9px}.silo-cone{position:absolute;top:72px;left:21px;width:0;height:0;border-left:17px solid transparent;border-right:17px solid transparent;border-top:22px solid var(--silo-cone)}.silo-leg{position:absolute;top:89px;width:3px;height:15px;background:var(--silo)}.silo-leg.l1{left:25px}.silo-leg.l2{right:25px}.silo-lbs{font-weight:800;color:var(--silo-text);font-size:12px}.silo-lbs small{font-size:9px;color:#677481}.notes{min-height:90px;border:1px solid #c7d3dc;padding:8px;white-space:pre-wrap;font-size:10px}.foot{margin-top:12px;font-size:9px;color:#697681;display:flex;justify-content:space-between}@media print{body{background:white}.toolbar{display:none}.paper{margin:0;box-shadow:none;padding:0}.sheet{break-before:page}}@media(max-width:700px){.paper{margin:0;padding:10px}.meta{grid-template-columns:1fr 1.5fr .5fr}.silo-grid{grid-template-columns:repeat(5,1fr)}}
+  </style></head><body>
+  <div class="toolbar"><button onclick="window.print()">Print / Save PDF</button><button id="shareBtn" disabled>Preparing Share…</button><button onclick="window.close()">Close</button></div>
+  <main class="paper">
+    <div class="head"><div><h1>EXTRUSION SR. LEAD DAILY CHECKLIST</h1><div class="dcn">DCN TN-100-00003</div></div><div class="dcn">Digital Report</div></div>
+    <div class="meta"><div><b>Date</b>${escapeHtml(formatDate(state.meta.date))}</div><div><b>Sr. Lead</b>${escapeHtml(state.meta.lead||"—")}</div><div><b>Shift</b>${escapeHtml(state.meta.shift)}</div></div>
+    <div class="summary">${summaryHtml}</div>
+    <h2>SAFETY / FORK TRUCK / QUALITY / HOUSEKEEPING</h2><table>${safetyRows}</table>
+    <section class="sheet keep"><h2>PRODUCTIVITY / BLENDS</h2><table><thead><tr><th>Productivity</th><th>Plan</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${pRows}${gasRows}${pctRow}</tbody></table><table style="margin-top:6px"><thead><tr><th>Blends</th><th>Plan</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${blendRows}</tbody></table></section>
+    <section class="sheet"><h2>EQUIPMENT INSPECTION</h2><table><thead><tr><th>Item</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${eqRows}</tbody></table><table style="margin-top:7px"><tbody><tr><th>Pump Room Inspected</th><td>${state.common.pumpRoom||"—"}</td><th>Time</th><td>${escapeHtml(format12h(state.common.pumpTime))}</td></tr><tr><th>Mechanical Room Blower Powder Barrel Checked</th><td>${state.common.mechanicalBlower||"—"}</td><th>All screen packs clean and accounted</th><td>${state.common.screenPacks||"—"}</td></tr></tbody></table><h2>INVENTORY LEVELS</h2><div class="silo-grid">${silos}</div><table>${invRows}</table><h2>NOTES</h2><div class="notes">${escapeHtml(state.notes||"")}</div><div class="foot"><span>DCN TN-100-00003</span></div></section>
+  </main>
+<script>window.REPORT_DATA=${shareJson};</script><script src="report-share.js"></script></body></html>`;
 
+  const w=window.open("","_blank");
+  if(!w){alert("Allow pop-ups to generate the report.");return}
+  w.document.open();w.document.write(report);w.document.close();
+}
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));b.classList.add("active");$(b.dataset.target).classList.add("active")});
 $("date").addEventListener("change",()=>{updateDateDisplay();save()});["lead","shift"].forEach(id=>$(id).addEventListener("change",save));
 $("saveBtn").onclick=()=>{save();const b=$("saveBtn"),old=b.textContent;b.textContent="Saved ✓";setTimeout(()=>b.textContent=old,900)};
