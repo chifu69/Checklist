@@ -1,27 +1,28 @@
-# Extrusion Sr. Lead Daily Checklist — v1.8
+# Extrusion Sr. Lead Daily Checklist — v1.9
 
 Phone-friendly PWA based on the supplied Sr. Lead Daily Checklist.
 
-## v1.8 changes
-- Attention banner now lists each actual problem instead of only showing a count.
-- Talc below 14 boxes is shown in red in the app and report.
-- CO₂ inventory is treated as volume: the report shows the value only, with no lb/lbs unit.
-- Silo colors:
-  - More than 100,000 lb = green
-  - 50,000–100,000 lb = yellow
-  - Less than 50,000 lb = red
-- The silo drawings and silo values use those colors in the generated report.
-- Added **Share Report** to the report toolbar.
-  - On supported iPhone/iPad browsers it creates a PDF and opens the native iOS share sheet so it can be sent with Mail, Messages, AirDrop, Files, etc.
-  - If file sharing is unavailable, the app saves the generated PDF as a fallback.
-- EPIC photo/live scanning remains removed for now.
-- The generated-from-PWA footer remains removed.
+## v1.9
+- Added RUNNING / DOWN status for each extrusion line.
+- A DOWN line is not counted as incomplete for Productivity / Blends.
+- The report shows each line's RUNNING / DOWN status.
+- Added automatic time stamps:
+  - Safety checks record the time when checked.
+  - Equipment YES/NO selections record the time automatically.
+  - Common-area inspections record the time automatically.
+  - Pump Room time is now automatic; no manual time entry is required.
+- Fixed iPhone numeric-entry focus:
+  - Silo fields no longer re-render after every digit.
+  - Productivity Butane / CO₂ fields no longer re-render after every digit.
+  - The keyboard stays open while entering multi-digit values.
+- Existing v1.8 inventory colors, Talc warning, detailed attention list, Share Report, and report formatting remain.
 
-## Existing process rules
+## Current process rules
 - Outside Air: 3–8 PSI
 - Inside Air: 20–50 PSI
 - Differential: under 600 green, 600–800 yellow, above 800 red
-- CO₂ % is calculated per active line from CO₂ / (Butane + CO₂)
+- CO₂ % is calculated per running line from CO₂ / (Butane + CO₂)
 - CO₂ % below 15% is yellow; 15% or higher is green
-- Pump Room time is displayed in 12-hour AM/PM format
-- Roll Count remains a separate app
+- Silos: >100,000 lb green; 50,000–100,000 yellow; <50,000 red
+- Talc below 14 boxes is red
+- EPIC photo scanning remains removed for now

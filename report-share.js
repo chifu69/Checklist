@@ -125,30 +125,36 @@ function renderPdfPages(d){
   let c=makeCanvas(),ctx=c.getContext("2d"),y=drawHeader(ctx,d,true);
   y=drawSummary(ctx,y,d.problems||[]);
   y=section(ctx,"SAFETY / FORK TRUCK / QUALITY / HOUSEKEEPING",y+10);
-  const srows=(d.safety||[]).map(r=>[
+  const srows=(d.safety||[]).map((r,i)=>[
     {text:r.cat,bold:true},
     {text:r.done?"✓":"",align:"center",color:r.done?COLORS.green:COLORS.red,bold:true},
-    {text:r.label}
+    {text:r.label},
+    {text:(d.times?.safety&&d.times.safety[r.key])?new Date(d.times.safety[r.key]).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):"—",align:"center",color:COLORS.muted}
   ]);
-  table(ctx,46,y,[260,65,858],srows,{size:17,minH:50});
+  table(ctx,46,y,[235,60,748,140],srows,{size:16,minH:50});
   pages.push(c);
 
   c=makeCanvas();ctx=c.getContext("2d");y=drawHeader(ctx,d,false);y=section(ctx,"PRODUCTIVITY / BLENDS",y);
   const widths=[300,300,146,146,146,145];
   let prows=[[{text:"Productivity",bold:true},{text:"Plan",bold:true},{text:"EXT1",bold:true,align:"center"},{text:"EXT2",bold:true,align:"center"},{text:"EXT3",bold:true,align:"center"},{text:"EXT4",bold:true,align:"center"}]];
-  (d.productivity||[]).forEach(r=>prows.push([{text:r.label,bold:true},{text:r.plan,align:"center"},...r.values.map(v=>statusCell(v.value,v.status))]));
-  (d.gas||[]).forEach(r=>prows.push([{text:r.label,bold:true},{text:r.unit,align:"center"},...r.values.map(v=>({text:v||"—",align:"center"}))]));
-  prows.push([{text:"CO2 %",bold:true},{text:"CO2 / (Butane + CO2)",align:"center"},...(d.co2Pct||[]).map(p=>({text:p==null?"—":p.toFixed(2)+"%",align:"center",bg:p==null?"#fff":p>=15?COLORS.greenBg:COLORS.yellowBg,color:p==null?COLORS.ink:p>=15?COLORS.green:COLORS.yellow,bold:p!=null}))]);
+  prows.push([{text:"Line Status",bold:true},{text:"—",align:"center"},...["EXT1","EXT2","EXT3","EXT4"].map(l=>({text:d.lineStatus?.[l]||"RUNNING",align:"center",bg:d.lineStatus?.[l]==="DOWN"?"#eef1f4":COLORS.greenBg,color:d.lineStatus?.[l]==="DOWN"?"#5c6874":COLORS.green,bold:true}))]);
+  (d.productivity||[]).forEach(r=>prows.push([{text:r.label,bold:true},{text:r.plan,align:"center"},...r.values.map(v=>v.status==="down"?{text:"DOWN",align:"center",bg:"#eef1f4",color:"#5c6874",bold:true}:statusCell(v.value,v.status))]));
+  (d.gas||[]).forEach(r=>prows.push([{text:r.label,bold:true},{text:r.unit,align:"center"},...r.values.map(v=>({text:v||"—",align:"center",bg:v==="DOWN"?"#eef1f4":"#fff",color:v==="DOWN"?"#5c6874":COLORS.ink,bold:v==="DOWN"}))]));
+  prows.push([{text:"CO2 %",bold:true},{text:"CO2 / (Butane + CO2)",align:"center"},...(d.co2Pct||[]).map((p,i)=>{const l=["EXT1","EXT2","EXT3","EXT4"][i];if(d.lineStatus?.[l]==="DOWN")return{text:"DOWN",align:"center",bg:"#eef1f4",color:"#5c6874",bold:true};return{text:p==null?"—":p.toFixed(2)+"%",align:"center",bg:p==null?"#fff":p>=15?COLORS.greenBg:COLORS.yellowBg,color:p==null?COLORS.ink:p>=15?COLORS.green:COLORS.yellow,bold:p!=null}})]);
   y=table(ctx,46,y,widths,prows,{size:15,minH:42});y+=16;
   const brows=[[{text:"Blends",bold:true},{text:"Plan",bold:true},{text:"EXT1",bold:true,align:"center"},{text:"EXT2",bold:true,align:"center"},{text:"EXT3",bold:true,align:"center"},{text:"EXT4",bold:true,align:"center"}]];
-  (d.blends||[]).forEach(r=>brows.push([{text:r.label,bold:true},{text:"—",align:"center"},...r.values.map(v=>({text:v||"—",align:"center"}))]));
+  (d.blends||[]).forEach(r=>brows.push([{text:r.label,bold:true},{text:"—",align:"center"},...r.values.map(v=>({text:v||"—",align:"center",bg:v==="DOWN"?"#eef1f4":"#fff",color:v==="DOWN"?"#5c6874":COLORS.ink,bold:v==="DOWN"}))]));
   table(ctx,46,y,widths,brows,{size:15,minH:42});
   pages.push(c);
 
   c=makeCanvas();ctx=c.getContext("2d");y=drawHeader(ctx,d,false);y=section(ctx,"EQUIPMENT INSPECTION",y);
   const ewidth=[700,121,121,121,120];
   let erows=[[{text:"Item",bold:true},{text:"EXT1",bold:true,align:"center"},{text:"EXT2",bold:true,align:"center"},{text:"EXT3",bold:true,align:"center"},{text:"EXT4",bold:true,align:"center"}]];
-  (d.equipment||[]).forEach(r=>erows.push([{text:r.label,bold:true},...r.values.map(v=>({text:v||"—",align:"center",bg:!v?"#fff":v===r.good?COLORS.greenBg:COLORS.redBg,color:!v?COLORS.ink:v===r.good?COLORS.green:COLORS.red,bold:!!v}))]));
+  (d.equipment||[]).forEach(r=>erows.push([{text:r.label,bold:true},...r.values.map((v,i)=>{
+    const l=["EXT1","EXT2","EXT3","EXT4"][i],ts=d.times?.equipment?.[l]?.[r.key];
+    const tm=ts?new Date(ts).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):"";
+    return{text:(v||"—")+(tm?"\n"+tm:""),align:"center",bg:!v?"#fff":v===r.good?COLORS.greenBg:COLORS.redBg,color:!v?COLORS.ink:v===r.good?COLORS.green:COLORS.red,bold:!!v};
+  })]));
   y=table(ctx,46,y,ewidth,erows,{size:15,minH:40});y+=10;
   y=table(ctx,46,y,[560,60,420,143],[
     [{text:"Pump Room Inspected",bold:true},{text:d.common?.pumpRoom||"—",align:"center"},{text:"Time",bold:true},{text:d.common?.pumpTime||"—",align:"center"}],

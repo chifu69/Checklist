@@ -36,3 +36,24 @@ dialog{border:0;border-radius:18px;padding:0;max-width:620px;width:calc(100% - 2
 .camera-actions{display:grid;grid-template-columns:1fr 1.25fr}
 .camera-actions button{width:100%}
 
+
+.check-content{display:flex;flex-direction:column;gap:3px;min-width:0}
+.check-content>span{font-weight:650;line-height:1.25}
+.auto-time{font-size:11px;color:var(--muted);font-weight:700}
+.line-status{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;margin:2px 0 14px;border:1px solid #d9e2e9;border-radius:14px;background:#f7fafc}
+.line-status-label{display:flex;flex-direction:column;gap:3px;color:var(--navy)}
+.line-status-buttons{display:grid;grid-template-columns:1fr 1fr;gap:7px;min-width:210px}
+.status-btn{border:1px solid #cad5de;background:#fff;border-radius:11px;padding:10px 14px;font-weight:850;color:var(--blue)}
+.status-btn.selected.running{background:#eaf8ef;border-color:#70bd8b;color:#176b38}
+.status-btn.selected.down{background:#eef1f4;border-color:#9aa7b2;color:#475561}
+.line-down{opacity:.72}
+.line-down input:disabled{background:#eef1f4;color:#65717c}
+.down-message{margin-bottom:12px;padding:10px 12px;border-radius:12px;background:#eef1f4;color:#4d5a65;font-size:12px;font-weight:800}
+.eq-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.auto-time-box{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px;padding:12px;border-radius:12px;background:#f6f9fb;border:1px solid #dfe7ed}
+.auto-time-box span{font-weight:750;color:#435160}.auto-time-box strong{color:var(--navy)}
+.badge[hidden]{display:none!important}
+@media(max-width:650px){
+  .line-status{align-items:stretch;flex-direction:column}
+  .line-status-buttons{min-width:0;width:100%}
+}
