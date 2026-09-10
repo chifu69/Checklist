@@ -40,3 +40,11 @@ Version v1.10 updates:
 - Added **Saved Checklists** with Open PDF, Share, and Delete actions.
 - Saved PDFs remain available after clearing the current shift checklist.
 - Current checklist fields continue to autosave while data is entered.
+
+
+## v1.12 — Line-first workflow
+- Combined Productivity, Blends, and all line-specific Equipment checks into one Line Checks screen.
+- EXT1 / EXT2 / EXT3 / EXT4 are now the floating/sticky controls while completing line checks.
+- Switching lines automatically returns to the top of the Line Checks screen so the next line can be started immediately.
+- Pump Room, Mechanical Room, and Screen Pack checks remain in a separate Common Areas section because they do not belong to a single line.
+- Existing report format, saved PDFs, inventory rules, CO2 tank conversion, Running/Down behavior, and automatic timestamps are preserved.

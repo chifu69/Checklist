@@ -64,7 +64,7 @@ LINES.forEach(l=>{
   state.times.equipment[l]={};
 });
 
-let activeProductLine="EXT1",activeEquipmentLine="EXT1";
+let activeProductLine="EXT1";
 
 function el(tag,cls="",text=""){const n=document.createElement(tag);if(cls)n.className=cls;if(text)n.textContent=text;return n}
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
@@ -157,7 +157,19 @@ function renderSafety(){
     row.append(cb,content);card.appendChild(row);
   });
 }
-function lineSelector(active,setActive,render){const w=el("div","line-tabs");LINES.forEach(l=>{const b=el("button","line-tab"+(active===l?" active":""),l);b.type="button";b.onclick=()=>{setActive(l);render()};w.appendChild(b)});return w}
+function lineSelector(active,setActive,render,{floating=false,jumpTop=false}={}){
+  const w=el("div","line-tabs"+(floating?" floating-lines":""));
+  LINES.forEach(l=>{
+    const b=el("button","line-tab"+(active===l?" active":""),l);b.type="button";
+    b.onclick=()=>{
+      if(active===l)return;
+      setActive(l);render();
+      if(jumpTop)requestAnimationFrame(()=>{$("lineChecks")?.scrollIntoView({behavior:"smooth",block:"start"})});
+    };
+    w.appendChild(b);
+  });
+  return w;
+}
 function lineStatusControl(line){
   const w=el("div","line-status");
   const left=el("div","line-status-label");
@@ -171,8 +183,7 @@ function lineStatusControl(line){
       if(state.lineStatus[line]===value)return;
       state.lineStatus[line]=value;
       state.times.lineStatus[line]=nowStamp();
-      save();
-      renderProductivity();
+      save();renderLineChecks();
     };
     buttons.appendChild(b);
   });
@@ -195,69 +206,82 @@ function statusClass(value,rule){
   return"";
 }
 
+function yesNoControl(obj,key,good,timesObj,onSelect,timeEl){
+  const w=el("div","yesno");
+  const paint=()=>{
+    [...w.children].forEach(b=>{
+      const v=b.dataset.value,selected=obj[key]===v;
+      b.className="yn-btn"+(selected?" selected "+(v===good?"good":"bad"):"");
+    });
+  };
+  [["Y","YES"],["N","NO"]].forEach(([v,label])=>{
+    const b=el("button","yn-btn",label);b.type="button";b.dataset.value=v;
+    b.onclick=()=>{
+      obj[key]=v;
+      if(timesObj)timesObj[key]=nowStamp();
+      if(onSelect)onSelect(v);
+      if(timeEl&&timesObj)timeEl.textContent=stampTime(timesObj[key]);
+      paint();save();
+    };
+    w.appendChild(b);
+  });
+  paint();return w;
+}
 
-function renderProductivity(){
-  const host=$("productivity");host.innerHTML="";
-  const c=sectionCard("Productivity / Blends","One line at a time — report combines all four lines");
-  c.appendChild(lineSelector(activeProductLine,l=>activeProductLine=l,renderProductivity));
-  c.appendChild(lineStatusControl(activeProductLine));
-  const down=isDown(activeProductLine);
+function renderLineChecks(){
+  const host=$("lineChecks");host.innerHTML="";
+  host.appendChild(lineSelector(activeProductLine,l=>activeProductLine=l,renderLineChecks,{floating:true,jumpTop:true}));
+  const line=activeProductLine,down=isDown(line);
+  const c=sectionCard(`${line} — Complete Line Check`,`Productivity, blends and equipment for this line`);
+  c.appendChild(lineStatusControl(line));
 
   const body=el("div",down?"line-data line-down":"line-data");
-  if(down)body.appendChild(el("div","down-message",`${activeProductLine} is marked DOWN. Productivity and blend fields are not required.`));
+  if(down)body.appendChild(el("div","down-message",`${line} is marked DOWN. Productivity and blend fields are not required. Equipment checks remain available below.`));
 
-  const grid=el("div","field-grid");
+  body.appendChild(el("div","subsection-title first-subsection","Productivity"));
+  const grid=el("div","field-grid productivity-grid");
   productivityFields.forEach(([key,label,type,meta,rule])=>{
-    const f=el("label","field "+statusClass(state.productivity[activeProductLine][key],rule));
+    const f=el("label","field "+statusClass(state.productivity[line][key],rule));
     f.appendChild(document.createTextNode(label));
     const i=document.createElement("input");i.type=type;i.disabled=down;
     if(type==="number"){i.inputMode="decimal";i.step="any"}
-    i.value=state.productivity[activeProductLine][key]??"";
-    i.oninput=()=>{state.productivity[activeProductLine][key]=i.value;save();renderProductivitySoft()};
+    i.value=state.productivity[line][key]??"";
+    i.oninput=()=>{state.productivity[line][key]=i.value;f.className="field "+statusClass(i.value,rule);save()};
     f.appendChild(i);if(meta)f.appendChild(el("span","meta",meta));grid.appendChild(f);
   });
   body.appendChild(grid);
 
   const gas=el("div","gas-fields");gas.appendChild(el("div","gas-title","Gas Set Points — lb/hr"));
   [["butane","Butane"],["co2","CO2"]].forEach(([key,label])=>{
-    const f=el("label","field");
-    const cap=document.createElement("span");
+    const f=el("label","field"),cap=document.createElement("span");
     if(key==="co2")cap.innerHTML=co2LabelHtml();else cap.textContent=label;
     f.appendChild(cap);
     const i=document.createElement("input");i.type="number";i.inputMode="decimal";i.step="any";i.disabled=down;
     i.placeholder=key==="co2"?"Enter 0 if line runs without CO2":"lb/hr";
-    i.value=state.productivity[activeProductLine][key]??"";
-    i.oninput=()=>{state.productivity[activeProductLine][key]=i.value;save();refreshLineCo2()};
+    i.value=state.productivity[line][key]??"";
+    i.oninput=()=>{state.productivity[line][key]=i.value;save();refreshLineCo2()};
     f.appendChild(i);gas.appendChild(f);
   });
   body.appendChild(gas);
 
-  const p=lineCo2Pct(activeProductLine),co=el("div","line-co2 "+(down||p===null?"neutral":p>=15?"good":"warn"));
-  co.id="lineCo2Card";
-  const coLabel=document.createElement("span");coLabel.innerHTML=`${activeProductLine} ${co2LabelHtml(" %")}`;co.appendChild(coLabel);
-  const strong=el("strong","",down?"DOWN":p===null?"—":`${fmt(p)}%`);strong.id="lineCo2Value";co.appendChild(strong);
-  body.appendChild(co);
+  const p=lineCo2Pct(line),co=el("div","line-co2 "+(down||p===null?"neutral":p>=15?"good":"warn"));
+  co.id="lineCo2Card";const coLabel=document.createElement("span");coLabel.innerHTML=`${line} ${co2LabelHtml(" %")}`;co.appendChild(coLabel);
+  const strong=el("strong","",down?"DOWN":p===null?"—":`${fmt(p)}%`);strong.id="lineCo2Value";co.appendChild(strong);body.appendChild(co);
 
   body.appendChild(el("div","subsection-title","Blends"));
-  syncVirgin2Silo(activeProductLine);
+  syncVirgin2Silo(line);
   const bg=el("div","field-grid");
   blendFields.forEach(([key,label])=>{
-    const f=el("label","field"+(key==="silo"?" auto-field":""));
-    const cap=document.createElement("span");
-    if(key==="silo")cap.innerHTML=`Silo in Use <span class="auto-pill">AUTO</span>`;else cap.textContent=label;
-    f.appendChild(cap);
-    const i=document.createElement("input");
-    i.type=key==="silo"?"text":"number";i.disabled=down;
+    const f=el("label","field"+(key==="silo"?" auto-field":"")),cap=document.createElement("span");
+    if(key==="silo")cap.innerHTML=`Silo in Use <span class="auto-pill">AUTO</span>`;else cap.textContent=label;f.appendChild(cap);
+    const i=document.createElement("input");i.type=key==="silo"?"text":"number";i.disabled=down;
     if(i.type==="number"){i.inputMode="decimal";i.step="any"}
-    if(key==="silo"){i.readOnly=true;i.className="auto-input";i.id="autoSiloInput";i.value=down?"—":(state.blends[activeProductLine][key]||"No")}
-    else{i.value=state.blends[activeProductLine][key]??""}
+    if(key==="silo"){i.readOnly=true;i.className="auto-input";i.id="autoSiloInput";i.value=down?"—":(state.blends[line][key]||"No")}
+    else i.value=state.blends[line][key]??"";
     if(key==="virgin2")i.placeholder="Optional";
     i.oninput=()=>{
-      state.blends[activeProductLine][key]=i.value;
-      if(key==="virgin2"){
-        syncVirgin2Silo(activeProductLine);
-        const auto=$("autoSiloInput");if(auto)auto.value=state.blends[activeProductLine].silo||"No";
-      }
+      state.blends[line][key]=i.value;
+      if(key==="virgin2"){syncVirgin2Silo(line);const auto=$("autoSiloInput");if(auto)auto.value=state.blends[line].silo||"No"}
       save();
     };
     f.appendChild(i);
@@ -265,57 +289,33 @@ function renderProductivity(){
     if(key==="silo")f.appendChild(el("span","meta","Automatic: Yes when Virgin 2 is greater than 0%; otherwise No."));
     bg.appendChild(f);
   });
-  body.appendChild(bg);c.appendChild(body);host.appendChild(c);
-}
-function renderProductivitySoft(){document.querySelectorAll("#productivity .field-grid:first-of-type .field").forEach((f,i)=>{const input=f.querySelector("input"),rule=productivityFields[i]?.[4];if(input)f.className="field "+statusClass(input.value,rule)})}
+  body.appendChild(bg);c.appendChild(body);
 
-function yesNoControl(obj,key,good,timesObj,onSelect){
-  const w=el("div","yesno");
-  [["Y","YES"],["N","NO"]].forEach(([v,label])=>{
-    const selected=obj[key]===v,b=el("button","yn-btn"+(selected?" selected "+(v===good?"good":"bad"):""),label);
-    b.type="button";
-    b.onclick=()=>{
-      obj[key]=v;
-      if(timesObj)timesObj[key]=nowStamp();
-      if(onSelect)onSelect(v);
-      save();renderEquipment();
-    };
-    w.appendChild(b);
-  });
-  return w;
-}
-function renderEquipment(){
-  const host=$("equipment");host.innerHTML="";
-  const c=sectionCard("Equipment Inspection","Time is recorded automatically when you choose YES or NO");
-  c.appendChild(lineSelector(activeEquipmentLine,l=>activeEquipmentLine=l,renderEquipment));
+  c.appendChild(el("div","subsection-title equipment-divider","Equipment Inspection"));
+  const eqHint=el("div","line-equipment-hint","Complete the water, gearbox, Meech, Regen, cam bolt and die-head checks before moving to the next line.");c.appendChild(eqHint);
   equipmentFields.forEach(([key,label,good])=>{
-    const i=el("div","eq-item");
-    const head=el("div","eq-head");head.appendChild(el("div","eq-name",label));
-    head.appendChild(el("small","auto-time",state.times.equipment[activeEquipmentLine][key]?stampTime(state.times.equipment[activeEquipmentLine][key]):""));
-    i.appendChild(head);
-    i.appendChild(yesNoControl(state.equipment[activeEquipmentLine],key,good,state.times.equipment[activeEquipmentLine]));
-    c.appendChild(i);
+    const item=el("div","eq-item"),head=el("div","eq-head"),time=el("small","auto-time",state.times.equipment[line][key]?stampTime(state.times.equipment[line][key]):"");
+    head.appendChild(el("div","eq-name",label));head.appendChild(time);item.appendChild(head);
+    item.appendChild(yesNoControl(state.equipment[line],key,good,state.times.equipment[line],null,time));c.appendChild(item);
   });
   host.appendChild(c);
+}
 
-  const common=sectionCard("Common Areas","Time is recorded automatically");
+function renderCommonAreas(){
+  const host=$("common");host.innerHTML="";
+  const common=sectionCard("Common Areas","These checks are not assigned to a specific extrusion line");
+  let pumpDisplay=null;
   [["pumpRoom","Pump Room Inspected"],["mechanicalBlower","Mechanical Room Blower Powder Barrel Checked"],["screenPacks","All screen packs clean and accounted"]].forEach(([key,label])=>{
-    const i=el("div","eq-item"),head=el("div","eq-head");
-    head.appendChild(el("div","eq-name",label));
-    head.appendChild(el("small","auto-time",state.times.common[key]?stampTime(state.times.common[key]):""));
-    i.appendChild(head);
-    i.appendChild(yesNoControl(state.common,key,"Y",state.times.common,key==="pumpRoom"?()=>{state.common.pumpTime=currentTime24()}:null));
-    common.appendChild(i);
+    const item=el("div","eq-item"),head=el("div","eq-head"),time=el("small","auto-time",state.times.common[key]?stampTime(state.times.common[key]):"");
+    head.appendChild(el("div","eq-name",label));head.appendChild(time);item.appendChild(head);
+    item.appendChild(yesNoControl(state.common,key,"Y",state.times.common,key==="pumpRoom"?()=>{state.common.pumpTime=currentTime24();if(pumpDisplay)pumpDisplay.textContent=stampTime(state.times.common.pumpRoom)}:null,time));common.appendChild(item);
   });
-  const auto=el("div","auto-time-box");
-  auto.appendChild(el("span","","Pump Room Time"));
-  auto.appendChild(el("strong","",state.times.common.pumpRoom?stampTime(state.times.common.pumpRoom):"Recorded when inspected"));
-  common.appendChild(auto);
-
+  const auto=el("div","auto-time-box");auto.appendChild(el("span","","Pump Room Time"));pumpDisplay=el("strong","",state.times.common.pumpRoom?stampTime(state.times.common.pumpRoom):"Recorded when inspected");auto.appendChild(pumpDisplay);common.appendChild(auto);
   const open=el("button","secondary","Open Roll Count App");open.type="button";open.style.marginTop="12px";
   open.onclick=()=>{const s=JSON.parse(localStorage.getItem(SETTINGS_KEY)||"{}");if(s.rollCountUrl)window.open(s.rollCountUrl,"_blank");else $("settingsDialog").showModal()};
   common.appendChild(open);host.appendChild(common);
 }
+
 function siloStatus(value){
   const n=num(value);if(n===null)return"";
   return n>100000?"ok":n>=50000?"warn":"bad";
@@ -581,4 +581,4 @@ $("reportBtn").onclick=generateReport;
 $("settingsBtn").onclick=()=>{const s=JSON.parse(localStorage.getItem(SETTINGS_KEY)||"{}");$("rollCountUrl").value=s.rollCountUrl||"";$("settingsDialog").showModal()};
 $("saveSettings").onclick=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify({rollCountUrl:$("rollCountUrl").value.trim()}));
 
-load();renderSafety();renderProductivity();renderEquipment();renderInventory();renderNotes();updateProgress();refreshSavedCount();if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+load();renderSafety();renderLineChecks();renderCommonAreas();renderInventory();renderNotes();updateProgress();refreshSavedCount();if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
