@@ -26,3 +26,9 @@ Phone-friendly PWA based on the supplied Sr. Lead Daily Checklist.
 - Silos: >100,000 lb green; 50,000–100,000 yellow; <50,000 red
 - Talc below 14 boxes is red
 - EPIC photo scanning remains removed for now
+
+
+Version v1.10 updates:
+- CO2 tank input now uses inches WC and the report expands it to inches WC, gallons, and percent full.
+- Virgin 2 is optional and now automatically sets Silo in Use to Yes/No.
+- Down lines display a dash in report value cells instead of repeating DOWN everywhere.

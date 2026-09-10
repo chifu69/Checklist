@@ -7,6 +7,15 @@ const COLORS={
   red:"#aa2929",redBg:"#fff0f0"
 };
 let preparedPdfBlob=null;
+const CO2_TANK_TABLE=[
+  {inch:5,gal:30,pct:0.4},{inch:20,gal:377,pct:5.1},{inch:35,gal:835,pct:11.2},{inch:50,gal:1327,pct:17.8},
+  {inch:65,gal:1820,pct:24.4},{inch:80,gal:2313,pct:31.0},{inch:95,gal:2805,pct:37.7},{inch:110,gal:3298,pct:44.3},
+  {inch:130,gal:3955,pct:53.1},{inch:150,gal:4612,pct:61.9},{inch:170,gal:5268,pct:70.7},{inch:190,gal:5925,pct:79.5},
+  {inch:210,gal:6582,pct:88.4},{inch:225,gal:7075,pct:95.0},{inch:236,gal:7450,pct:100.0}
+];
+function fmtNum(v,max=2){const n=Number(v);return Number.isFinite(n)?n.toLocaleString("en-US",{maximumFractionDigits:max}):"—"}
+function calcCo2Tank(reading){const n=Number(reading);if(!Number.isFinite(n))return null;for(const row of CO2_TANK_TABLE){if(Math.abs(row.inch-n)<1e-9)return{inch:n,gal:row.gal,pct:row.pct,exact:true}}if(n<=CO2_TANK_TABLE[0].inch)return{inch:n,gal:CO2_TANK_TABLE[0].gal,pct:CO2_TANK_TABLE[0].pct,exact:false};if(n>=CO2_TANK_TABLE[CO2_TANK_TABLE.length-1].inch)return{inch:n,gal:CO2_TANK_TABLE[CO2_TANK_TABLE.length-1].gal,pct:CO2_TANK_TABLE[CO2_TANK_TABLE.length-1].pct,exact:false};for(let i=0;i<CO2_TANK_TABLE.length-1;i++){const a=CO2_TANK_TABLE[i],b=CO2_TANK_TABLE[i+1];if(n>a.inch&&n<b.inch){const t=(n-a.inch)/(b.inch-a.inch);return{inch:n,gal:a.gal+(b.gal-a.gal)*t,pct:a.pct+(b.pct-a.pct)*t,exact:false}}}return null}
+function co2TankReportText(reading){const d=calcCo2Tank(reading);return d?`${fmtNum(d.inch)} in. WC | ${fmtNum(d.gal)} gal | ${fmtNum(d.pct,1)}%`:"—"}
 
 function ctext(ctx,text,x,y,opt={}){
   ctx.font=(opt.bold?"700 ":"400 ")+(opt.size||18)+"px Arial";
@@ -138,12 +147,12 @@ function renderPdfPages(d){
   const widths=[300,300,146,146,146,145];
   let prows=[[{text:"Productivity",bold:true},{text:"Plan",bold:true},{text:"EXT1",bold:true,align:"center"},{text:"EXT2",bold:true,align:"center"},{text:"EXT3",bold:true,align:"center"},{text:"EXT4",bold:true,align:"center"}]];
   prows.push([{text:"Line Status",bold:true},{text:"—",align:"center"},...["EXT1","EXT2","EXT3","EXT4"].map(l=>({text:d.lineStatus?.[l]||"RUNNING",align:"center",bg:d.lineStatus?.[l]==="DOWN"?"#eef1f4":COLORS.greenBg,color:d.lineStatus?.[l]==="DOWN"?"#5c6874":COLORS.green,bold:true}))]);
-  (d.productivity||[]).forEach(r=>prows.push([{text:r.label,bold:true},{text:r.plan,align:"center"},...r.values.map(v=>v.status==="down"?{text:"DOWN",align:"center",bg:"#eef1f4",color:"#5c6874",bold:true}:statusCell(v.value,v.status))]));
-  (d.gas||[]).forEach(r=>prows.push([{text:r.label,bold:true},{text:r.unit,align:"center"},...r.values.map(v=>({text:v||"—",align:"center",bg:v==="DOWN"?"#eef1f4":"#fff",color:v==="DOWN"?"#5c6874":COLORS.ink,bold:v==="DOWN"}))]));
-  prows.push([{text:"CO2 %",bold:true},{text:"CO2 / (Butane + CO2)",align:"center"},...(d.co2Pct||[]).map((p,i)=>{const l=["EXT1","EXT2","EXT3","EXT4"][i];if(d.lineStatus?.[l]==="DOWN")return{text:"DOWN",align:"center",bg:"#eef1f4",color:"#5c6874",bold:true};return{text:p==null?"—":p.toFixed(2)+"%",align:"center",bg:p==null?"#fff":p>=15?COLORS.greenBg:COLORS.yellowBg,color:p==null?COLORS.ink:p>=15?COLORS.green:COLORS.yellow,bold:p!=null}})]);
+  (d.productivity||[]).forEach(r=>prows.push([{text:r.label,bold:true},{text:r.plan,align:"center"},...r.values.map(v=>statusCell(v.value,v.status))]));
+  (d.gas||[]).forEach(r=>prows.push([{text:r.label,bold:true},{text:r.unit,align:"center"},...r.values.map(v=>({text:v||"—",align:"center"}))]));
+  prows.push([{text:"CO2 %",bold:true},{text:"CO2 / (Butane + CO2)",align:"center"},...(d.co2Pct||[]).map((p,i)=>{const l=["EXT1","EXT2","EXT3","EXT4"][i];if(d.lineStatus?.[l]==="DOWN")return{text:"—",align:"center"};return{text:p==null?"—":p.toFixed(2)+"%",align:"center",bg:p==null?"#fff":p>=15?COLORS.greenBg:COLORS.yellowBg,color:p==null?COLORS.ink:p>=15?COLORS.green:COLORS.yellow,bold:p!=null}})]);
   y=table(ctx,46,y,widths,prows,{size:15,minH:42});y+=16;
   const brows=[[{text:"Blends",bold:true},{text:"Plan",bold:true},{text:"EXT1",bold:true,align:"center"},{text:"EXT2",bold:true,align:"center"},{text:"EXT3",bold:true,align:"center"},{text:"EXT4",bold:true,align:"center"}]];
-  (d.blends||[]).forEach(r=>brows.push([{text:r.label,bold:true},{text:"—",align:"center"},...r.values.map(v=>({text:v||"—",align:"center",bg:v==="DOWN"?"#eef1f4":"#fff",color:v==="DOWN"?"#5c6874":COLORS.ink,bold:v==="DOWN"}))]));
+  (d.blends||[]).forEach(r=>brows.push([{text:r.label,bold:true},{text:"—",align:"center"},...r.values.map(v=>({text:v||"—",align:"center"}))]));
   table(ctx,46,y,widths,brows,{size:15,minH:42});
   pages.push(c);
 
@@ -172,7 +181,7 @@ function renderPdfPages(d){
   y=table(ctx,46,y,[850,333],[
     [{text:"Talc (14 Boxes Minimum)",bold:true},{text:hasTalc?d.inventory.talcBoxes+" boxes":"—",align:"center",bg:talcBg,color:talcColor,bold:hasTalc}],
     [{text:"Butane Tank",bold:true},{text:d.inventory?.butane!==""?d.inventory.butane+" %":"—",align:"center"}],
-    [{text:"CO2",bold:true},{text:d.inventory?.co2!==""?d.inventory.co2:"—",align:"center"}]
+    [{text:"CO2 Tank Level",bold:true},{text:co2TankReportText(d.inventory?.co2),align:"center"}]
   ],{size:16,minH:44});
 
   y=section(ctx,"NOTES",y+18);

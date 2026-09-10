@@ -57,3 +57,8 @@ dialog{border:0;border-radius:18px;padding:0;max-width:620px;width:calc(100% - 2
   .line-status{align-items:stretch;flex-direction:column}
   .line-status-buttons{min-width:0;width:100%}
 }
+
+.chem-sub{font-size:.8em;vertical-align:-.18em;display:inline-block;font-weight:800}
+.auto-pill{display:inline-flex;align-items:center;justify-content:center;margin-left:8px;padding:2px 8px;border-radius:999px;background:#e8eff6;color:#36506a;font-size:10px;font-weight:900;letter-spacing:.02em}
+.auto-input{background:#f5f8fb;color:#213446;font-weight:800}
+.co2-preview{line-height:1.35}
