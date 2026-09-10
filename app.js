@@ -285,8 +285,6 @@ function renderLineChecks(){
       save();
     };
     f.appendChild(i);
-    if(key==="virgin2")f.appendChild(el("span","meta","Optional — does not block checklist completion."));
-    if(key==="silo")f.appendChild(el("span","meta","Automatic: Yes when Virgin 2 is greater than 0%; otherwise No."));
     bg.appendChild(f);
   });
   body.appendChild(bg);c.appendChild(body);
@@ -372,8 +370,8 @@ function updateProgress(){
       productivityFields.forEach(([k])=>{total++;if(hasValue(state.productivity[l][k]))done++});
       ["butane","co2"].forEach(k=>{total++;if(hasValue(state.productivity[l][k]))done++});
       blendFields.forEach(([k])=>{if(k==="virgin2")return;total++;if(hasValue(state.blends[l][k]))done++});
+      equipmentFields.forEach(([k])=>{total++;if(hasValue(state.equipment[l][k]))done++});
     }
-    equipmentFields.forEach(([k])=>{total++;if(hasValue(state.equipment[l][k]))done++});
   });
   ["pumpRoom","mechanicalBlower","screenPacks"].forEach(k=>{total++;if(hasValue(state.common[k]))done++});
   Object.keys(state.inventory).forEach(k=>{total++;if(hasValue(state.inventory[k]))done++});

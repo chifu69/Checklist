@@ -48,3 +48,15 @@ Version v1.10 updates:
 - Switching lines automatically returns to the top of the Line Checks screen so the next line can be started immediately.
 - Pump Room, Mechanical Room, and Screen Pack checks remain in a separate Common Areas section because they do not belong to a single line.
 - Existing report format, saved PDFs, inventory rules, CO2 tank conversion, Running/Down behavior, and automatic timestamps are preserved.
+
+
+## v1.13
+- Fixed checklist progress when lines are marked DOWN.
+- Productivity, blends, gas, and line-specific equipment on a DOWN line no longer count as required items.
+- Equipment checks remain visible and can still be completed on a DOWN line, but they are optional for checklist completion.
+
+
+## v1.14
+- Removed the extra Virgin 2 optional helper text.
+- Removed the extra Silo in Use automatic helper text.
+- No other behavior changed.
