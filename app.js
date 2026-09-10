@@ -4,6 +4,8 @@ const LINES=["EXT1","EXT2","EXT3","EXT4"];
 const KEY="srLeadChecklist.v1.5";
 const OLD_KEYS=["srLeadChecklist.v1.4","srLeadChecklist.v1.3","srLeadChecklist.v1.2","srLeadChecklist.v1.1","srLeadChecklist.v1"];
 const SETTINGS_KEY="srLeadChecklist.settings.v1";
+const SAVED_DB="srLeadChecklist.saved.v1";
+const SAVED_STORE="checklists";
 const $=id=>document.getElementById(id);
 
 const safetyItems=[
@@ -407,6 +409,122 @@ function siloCard(i,value){
   return`<div class="silo-card ${cls}"><div class="silo-art"><div class="silo-cap"></div><div class="silo-body"><span>SILO ${i}</span></div><div class="silo-cone"></div><div class="silo-leg l1"></div><div class="silo-leg l2"></div></div><div class="silo-lbs">${hasValue(value)?fmt(value):"—"} <small>lb</small></div></div>`;
 }
 function safeScriptJson(obj){return JSON.stringify(obj).replace(/</g,"\\u003c")}
+function collectProblems(){
+  const problems=[];
+  LINES.forEach(l=>{if(!isDown(l))productivityFields.forEach(([k,label,t,m,rule])=>{const p=issueDetail(l,k,label,rule);if(p)problems.push(p)})});
+  const talcN=num(state.inventory.talcBoxes);
+  if(talcN!==null&&talcN<14)problems.push(`Talc Inventory: ${fmt(talcN)} boxes — BELOW MINIMUM (14 boxes)`);
+  [1,2,3,4,5].forEach(i=>{const v=num(state.inventory[`silo${i}`]);if(v!==null&&v<50000)problems.push(`Silo ${i}: ${fmt(v)} lb — LOW (<50,000 lb)`)});
+  LINES.forEach(l=>equipmentFields.forEach(([k,label,good])=>{const v=state.equipment[l][k];if(v&&v!==good)problems.push(`${l} — ${label}: ${v==="Y"?"YES":"NO"}`)}));
+  [["pumpRoom","Pump Room Inspected"],["mechanicalBlower","Mechanical Room Blower Powder Barrel Checked"],["screenPacks","All screen packs clean and accounted"]].forEach(([k,label])=>{if(state.common[k]==="N")problems.push(`${label}: NO`)});
+  return problems;
+}
+function buildReportData(problems=collectProblems()){
+  LINES.forEach(syncVirgin2Silo);
+  return{
+    meta:{date:formatDate(state.meta.date),dateRaw:state.meta.date,lead:state.meta.lead||"—",shift:state.meta.shift},lineStatus:{...state.lineStatus},times:JSON.parse(JSON.stringify(state.times)),
+    safety:safetyItems.map(([k,cat,label])=>({key:k,cat,label,done:!!state.safety[k]})),
+    productivity:productivityFields.map(([k,label,t,meta,rule])=>({
+      key:k,label,plan:meta?meta.replace("Plan: ",""):"—",
+      values:LINES.map(l=>({line:l,value:isDown(l)?"":state.productivity[l][k]??"",status:isDown(l)?"":statusClass(state.productivity[l][k],rule)}))
+    })),
+    gas:["butane","co2"].map(k=>({key:k,label:k==="butane"?"Butane":"CO2",unit:"lb/hr",values:LINES.map(l=>isDown(l)?"":state.productivity[l][k]??"")})),
+    co2Pct:LINES.map(l=>isDown(l)?null:lineCo2Pct(l)),
+    blends:blendFields.map(([k,label])=>({key:k,label,values:LINES.map(l=>isDown(l)?"":state.blends[l][k]??"")})),
+    equipment:equipmentFields.map(([k,label,good])=>({key:k,label,good,values:LINES.map(l=>state.equipment[l][k]??"")})),
+    common:{pumpRoom:state.common.pumpRoom||"",pumpTime:state.times.common.pumpRoom?stampTime(state.times.common.pumpRoom):format12h(state.common.pumpTime),mechanicalBlower:state.common.mechanicalBlower||"",screenPacks:state.common.screenPacks||""},
+    inventory:{...state.inventory,co2Computed:calcCo2Tank(state.inventory.co2)},
+    notes:state.notes||"",
+    problems
+  };
+}
+function openSavedDb(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(SAVED_DB,1);
+    req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains(SAVED_STORE))db.createObjectStore(SAVED_STORE,{keyPath:"id"})};
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+async function savedDbPut(record){
+  const db=await openSavedDb();
+  return new Promise((resolve,reject)=>{const tx=db.transaction(SAVED_STORE,"readwrite");tx.objectStore(SAVED_STORE).put(record);tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();reject(tx.error)}});
+}
+async function savedDbAll(){
+  const db=await openSavedDb();
+  return new Promise((resolve,reject)=>{const tx=db.transaction(SAVED_STORE,"readonly"),req=tx.objectStore(SAVED_STORE).getAll();req.onsuccess=()=>{const rows=req.result||[];db.close();resolve(rows)};req.onerror=()=>{db.close();reject(req.error)}});
+}
+async function savedDbDelete(id){
+  const db=await openSavedDb();
+  return new Promise((resolve,reject)=>{const tx=db.transaction(SAVED_STORE,"readwrite");tx.objectStore(SAVED_STORE).delete(id);tx.oncomplete=()=>{db.close();resolve()};tx.onerror=()=>{db.close();reject(tx.error)}});
+}
+function savedFilename(dateRaw,shift){return `Sr-Lead-Checklist_${dateRaw||"undated"}_Shift-${shift||"-"}.pdf`}
+function savedDisplayTime(v){const d=new Date(v);return Number.isNaN(d.getTime())?"":d.toLocaleString("en-US",{month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"})}
+async function refreshSavedCount(){
+  try{const rows=await savedDbAll(),badge=$("savedCount");if(badge)badge.textContent=rows.length?String(rows.length):""}catch(e){}
+}
+function openSavedPdf(record){
+  const url=URL.createObjectURL(record.pdfBlob);
+  const w=window.open(url,"_blank");
+  if(!w){const a=document.createElement("a");a.href=url;a.download=record.filename;document.body.appendChild(a);a.click();a.remove()}
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+async function shareSavedPdf(record){
+  const file=new File([record.pdfBlob],record.filename,{type:"application/pdf"});
+  try{
+    if(navigator.share&&(!navigator.canShare||navigator.canShare({files:[file]}))){
+      await navigator.share({title:"Extrusion Sr. Lead Daily Checklist",text:`${record.dateLabel} · Shift ${record.shift}`,files:[file]});
+    }else{
+      const url=URL.createObjectURL(record.pdfBlob),a=document.createElement("a");
+      a.href=url;a.download=record.filename;document.body.appendChild(a);a.click();a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),30000);
+    }
+  }catch(e){if(e&&e.name!=="AbortError")alert("Could not share the saved checklist.")}
+}
+async function renderSavedChecklists(){
+  const host=$("saved");if(!host)return;
+  host.innerHTML="";
+  const card=sectionCard("Saved Checklists","PDF snapshots saved on this device");
+  try{
+    const rows=(await savedDbAll()).sort((a,b)=>String(b.savedAt).localeCompare(String(a.savedAt)));
+    const badge=$("savedCount");if(badge)badge.textContent=rows.length?String(rows.length):"";
+    if(!rows.length){
+      card.appendChild(el("div","saved-empty","No saved checklists yet. Tap Save Checklist to store the current checklist as a PDF."));
+      host.appendChild(card);return;
+    }
+    const list=el("div","saved-list");
+    rows.forEach(record=>{
+      const item=el("div","saved-item"),info=el("div","saved-info");
+      info.appendChild(el("strong","",`${record.dateLabel} · Shift ${record.shift}`));
+      const detail=[record.lead&&record.lead!=="—"?record.lead:"",record.progress||"",`Saved ${savedDisplayTime(record.savedAt)}`].filter(Boolean).join(" · ");
+      info.appendChild(el("small","",detail));
+      const actions=el("div","saved-actions");
+      const open=el("button","secondary","Open PDF");open.type="button";open.onclick=()=>openSavedPdf(record);
+      const share=el("button","primary","Share");share.type="button";share.onclick=()=>shareSavedPdf(record);
+      const del=el("button","danger ghost","Delete");del.type="button";del.onclick=async()=>{if(confirm(`Delete ${record.dateLabel} · Shift ${record.shift}?`)){await savedDbDelete(record.id);renderSavedChecklists()}};
+      actions.append(open,share,del);item.append(info,actions);list.appendChild(item);
+    });
+    card.appendChild(list);
+  }catch(e){console.error(e);card.appendChild(el("div","saved-empty","Saved checklists could not be loaded on this device."))}
+  host.appendChild(card);
+}
+async function saveChecklistPdf(){
+  const btn=$("saveBtn"),old=btn.textContent;
+  btn.disabled=true;btn.textContent="Saving PDF…";
+  try{
+    save();
+    if(!window.SrLeadPdf||typeof window.SrLeadPdf.createBlob!=="function")throw new Error("PDF engine unavailable");
+    const data=buildReportData(),blob=window.SrLeadPdf.createBlob(data),id=`${state.meta.date||"undated"}_${state.meta.shift||"-"}`;
+    await savedDbPut({id,dateRaw:state.meta.date,dateLabel:formatDate(state.meta.date),shift:state.meta.shift,lead:state.meta.lead||"—",savedAt:new Date().toISOString(),progress:$("progressText")?$("progressText").textContent:"",filename:savedFilename(state.meta.date,state.meta.shift),pdfBlob:blob});
+    btn.textContent="Saved as PDF ✓";
+    await refreshSavedCount();
+    if($("saved")&&$("saved").classList.contains("active"))renderSavedChecklists();
+    setTimeout(()=>{btn.textContent=old;btn.disabled=false},1300);
+  }catch(e){
+    console.error(e);alert("Could not save the checklist PDF on this device.");btn.textContent=old;btn.disabled=false;
+  }
+}
+
 function generateReport(){
   save();
 
@@ -427,33 +545,13 @@ function generateReport(){
 
   const silos=[1,2,3,4,5].map(i=>siloCard(i,state.inventory[`silo${i}`])).join("");
 
-  const problems=[];
-  LINES.forEach(l=>{if(!isDown(l))productivityFields.forEach(([k,label,t,m,rule])=>{const p=issueDetail(l,k,label,rule);if(p)problems.push(p)})});
-  if(talcN!==null&&talcN<14)problems.push(`Talc Inventory: ${fmt(talcN)} boxes — BELOW MINIMUM (14 boxes)`);
-  [1,2,3,4,5].forEach(i=>{const v=num(state.inventory[`silo${i}`]);if(v!==null&&v<50000)problems.push(`Silo ${i}: ${fmt(v)} lb — LOW (<50,000 lb)`)});
-  LINES.forEach(l=>equipmentFields.forEach(([k,label,good])=>{const v=state.equipment[l][k];if(v&&v!==good)problems.push(`${l} — ${label}: ${v==="Y"?"YES":"NO"}`)}));
-  [["pumpRoom","Pump Room Inspected"],["mechanicalBlower","Mechanical Room Blower Powder Barrel Checked"],["screenPacks","All screen packs clean and accounted"]].forEach(([k,label])=>{if(state.common[k]==="N")problems.push(`${label}: NO`)});
+  const problems=collectProblems();
 
   const summaryHtml=problems.length
     ?`<div class="summary-title">⚠ ${problems.length} item(s) need attention</div><ul>${problems.map(p=>`<li>${escapeHtml(p)}</li>`).join("")}</ul>`
     :`<div class="summary-title good-summary">✓ No automatic exceptions detected</div>`;
 
-  const shareData={
-    meta:{date:formatDate(state.meta.date),dateRaw:state.meta.date,lead:state.meta.lead||"—",shift:state.meta.shift},lineStatus:{...state.lineStatus},times:JSON.parse(JSON.stringify(state.times)),
-    safety:safetyItems.map(([k,cat,label])=>({key:k,cat,label,done:!!state.safety[k]})),
-    productivity:productivityFields.map(([k,label,t,meta,rule])=>({
-      key:k,label,plan:meta?meta.replace("Plan: ",""):"—",
-      values:LINES.map(l=>({line:l,value:isDown(l)?"":state.productivity[l][k]??"",status:isDown(l)?"":statusClass(state.productivity[l][k],rule)}))
-    })),
-    gas:["butane","co2"].map(k=>({key:k,label:k==="butane"?"Butane":"CO2",unit:"lb/hr",values:LINES.map(l=>isDown(l)?"":state.productivity[l][k]??"")})),
-    co2Pct:LINES.map(l=>isDown(l)?null:lineCo2Pct(l)),
-    blends:blendFields.map(([k,label])=>({key:k,label,values:LINES.map(l=>isDown(l)?"":state.blends[l][k]??"")})),
-    equipment:equipmentFields.map(([k,label,good])=>({key:k,label,good,values:LINES.map(l=>state.equipment[l][k]??"")})),
-    common:{pumpRoom:state.common.pumpRoom||"",pumpTime:state.times.common.pumpRoom?stampTime(state.times.common.pumpRoom):format12h(state.common.pumpTime),mechanicalBlower:state.common.mechanicalBlower||"",screenPacks:state.common.screenPacks||""},
-    inventory:{...state.inventory,co2Computed:calcCo2Tank(state.inventory.co2)},
-    notes:state.notes||"",
-    problems
-  };
+  const shareData=buildReportData(problems);
   const shareJson=safeScriptJson(shareData);
 
   const report=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sr. Lead Report</title><style>
@@ -474,13 +572,13 @@ function generateReport(){
   if(!w){alert("Allow pop-ups to generate the report.");return}
   w.document.open();w.document.write(report);w.document.close();
 }
-document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));b.classList.add("active");$(b.dataset.target).classList.add("active")});
+document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));b.classList.add("active");$(b.dataset.target).classList.add("active");if(b.dataset.target==="saved")renderSavedChecklists()});
 $("date").addEventListener("change",()=>{updateDateDisplay();save()});["lead","shift"].forEach(id=>$(id).addEventListener("change",save));
-$("saveBtn").onclick=()=>{save();const b=$("saveBtn"),old=b.textContent;b.textContent="Saved ✓";setTimeout(()=>b.textContent=old,900)};
+$("saveBtn").onclick=saveChecklistPdf;
 $("resetBtn").onclick=()=>{if(confirm("Clear the current shift checklist?")){localStorage.removeItem(KEY);OLD_KEYS.forEach(k=>localStorage.removeItem(k));location.reload()}};
 $("reportBtn").onclick=generateReport;
 
 $("settingsBtn").onclick=()=>{const s=JSON.parse(localStorage.getItem(SETTINGS_KEY)||"{}");$("rollCountUrl").value=s.rollCountUrl||"";$("settingsDialog").showModal()};
 $("saveSettings").onclick=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify({rollCountUrl:$("rollCountUrl").value.trim()}));
 
-load();renderSafety();renderProductivity();renderEquipment();renderInventory();renderNotes();updateProgress();if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});
+load();renderSafety();renderProductivity();renderEquipment();renderInventory();renderNotes();updateProgress();refreshSavedCount();if("serviceWorker"in navigator)navigator.serviceWorker.register("sw.js").catch(()=>{});

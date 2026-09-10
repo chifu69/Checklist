@@ -32,3 +32,11 @@ Version v1.10 updates:
 - CO2 tank input now uses inches WC and the report expands it to inches WC, gallons, and percent full.
 - Virgin 2 is optional and now automatically sets Silo in Use to Yes/No.
 - Down lines display a dash in report value cells instead of repeating DOWN everywhere.
+
+
+## v1.11 — Saved Checklists
+- **Save Checklist** now creates a PDF snapshot and stores it inside the PWA using IndexedDB.
+- One saved PDF is kept per Date + Shift; pressing Save again updates that shift instead of creating duplicates.
+- Added **Saved Checklists** with Open PDF, Share, and Delete actions.
+- Saved PDFs remain available after clearing the current shift checklist.
+- Current checklist fields continue to autosave while data is entered.

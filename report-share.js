@@ -1,3 +1,4 @@
+(function(){
 "use strict";
 
 const D = window.REPORT_DATA || {};
@@ -266,6 +267,12 @@ async function shareReport(){
     if(e&&e.name!=="AbortError")alert("Could not share the report. Use Print / Save PDF.");
   }
 }
+window.SrLeadPdf={
+  createBlob(data){return pdfFromCanvases(renderPdfPages(data||{}))}
+};
 const shareBtn=document.getElementById("shareBtn");
-if(shareBtn)shareBtn.addEventListener("click",shareReport);
-setTimeout(prepareSharePdf,120);
+if(shareBtn){
+  shareBtn.addEventListener("click",shareReport);
+  setTimeout(prepareSharePdf,120);
+}
+})();

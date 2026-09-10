@@ -35,6 +35,7 @@
       <button class="tab" data-target="equipment">Equipment</button>
       <button class="tab" data-target="inventory">Inventory</button>
       <button class="tab" data-target="notes">Notes</button>
+      <button class="tab" data-target="saved">Saved Checklists <span id="savedCount" class="tab-count"></span></button>
     </nav>
 
     <section id="safety" class="panel active"></section>
@@ -42,9 +43,10 @@
     <section id="equipment" class="panel"></section>
     <section id="inventory" class="panel"></section>
     <section id="notes" class="panel"></section>
+    <section id="saved" class="panel"></section>
 
     <section class="actions card">
-      <button id="saveBtn" class="secondary">Save</button>
+      <button id="saveBtn" class="secondary">Save Checklist</button>
       <button id="resetBtn" class="danger ghost">Clear Shift</button>
       <button id="reportBtn" class="primary">Generate Report</button>
     </section>
@@ -58,6 +60,7 @@
       <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button id="saveSettings" value="default" class="primary">Save</button></div>
     </form>
   </dialog>
+  <script src="report-share.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
