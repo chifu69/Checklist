@@ -50,71 +50,7 @@
     </section>
   </main>
 
-
-  <dialog id="cameraDialog" class="camera-dialog">
-    <div class="dialog-card">
-      <div class="dialog-head">
-        <div><div class="eyebrow dark">EPIC LIVE SCANNER</div><h2 id="cameraTitle">Scan EPIC screen</h2></div>
-        <button type="button" id="cameraClose" class="close-x" aria-label="Close">×</button>
-      </div>
-      <div id="cameraNotice" class="scan-notice info">Fit the light EPIC screen inside the blue frame, hold steady, then tap Scan Screen.</div>
-      <div id="cameraView" class="camera-view">
-        <video id="cameraVideo" autoplay muted playsinline></video>
-        <div id="cameraGuide" class="camera-guide">
-          <span class="corner tl"></span><span class="corner tr"></span><span class="corner br"></span><span class="corner bl"></span>
-          <div class="camera-guide-label">EPIC SCREEN</div>
-        </div>
-      </div>
-      <div class="camera-status" id="cameraStatus">Starting camera…</div>
-      <div class="dialog-actions camera-actions">
-        <button type="button" id="choosePhotoBtn" class="secondary">Choose Photo</button>
-        <button type="button" id="cameraCapture" class="primary">Scan Screen</button>
-      </div>
-      <input id="cameraFallbackInput" type="file" accept="image/*" hidden>
-      <p class="small">If the live camera is unavailable, Choose Photo can take a new photo or select one already saved.</p>
-    </div>
-  </dialog>
-
-  <dialog id="scanDialog" class="scan-dialog">
-    <div class="dialog-card">
-      <div class="dialog-head">
-        <div><div class="eyebrow dark">EPIC PHOTO READER</div><h2 id="scanTitle">Read EPIC photo</h2></div>
-        <button type="button" id="scanClose" class="close-x" aria-label="Close">×</button>
-      </div>
-
-      <section id="frameStage">
-        <div class="scan-notice info">Fine adjustment: move the four blue points to the corners of the light EPIC display area, not the black bezel.</div>
-        <div id="frameWrap" class="frame-wrap">
-          <img id="frameImage" alt="EPIC photo to align">
-          <svg id="frameSvg" class="frame-svg" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true">
-            <polygon id="framePolygon" points="0,0 0,0 0,0 0,0"></polygon>
-          </svg>
-          <button class="frame-handle" data-i="0" aria-label="Top left corner"></button>
-          <button class="frame-handle" data-i="1" aria-label="Top right corner"></button>
-          <button class="frame-handle" data-i="2" aria-label="Bottom right corner"></button>
-          <button class="frame-handle" data-i="3" aria-label="Bottom left corner"></button>
-        </div>
-        <div class="frame-tip">This adjustment is only needed for a saved photo or if the automatic scan needs correction.</div>
-        <div class="dialog-actions split-actions">
-          <button type="button" id="frameReset" class="secondary">Reset Frame</button>
-          <button type="button" id="scanRead" class="primary">Read Photo</button>
-        </div>
-      </section>
-
-      <section id="resultStage" class="hidden">
-        <div id="scanProgress" class="scan-progress hidden"><div class="spinner"></div><div><strong id="scanProgressTitle">Reading photo…</strong><div id="scanProgressText" class="small">Preparing image</div></div></div>
-        <canvas id="scanPreview" class="scan-preview hidden"></canvas>
-        <div id="scanNotice" class="scan-notice hidden"></div>
-        <div id="scanFields" class="scan-fields"></div>
-        <div class="dialog-actions split-actions">
-          <button type="button" id="scanBack" class="secondary">Adjust Frame</button>
-          <button type="button" id="scanApply" class="primary">Apply to Line</button>
-        </div>
-      </section>
-    </div>
-  </dialog>
-
-  <dialog id="settingsDialog">
+<dialog id="settingsDialog">
     <form method="dialog" class="dialog-card">
       <h2>Settings</h2>
       <label>Roll Count app URL<input id="rollCountUrl" type="url" placeholder="Optional"></label>
@@ -122,8 +58,6 @@
       <div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button id="saveSettings" value="default" class="primary">Save</button></div>
     </form>
   </dialog>
-
-  <script src="photo-ocr.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

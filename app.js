@@ -50,11 +50,11 @@ const state={
   meta:{date:"",lead:"",shift:"C"}, safety:{}, productivity:{}, blends:{}, equipment:{},
   common:{pumpRoom:"",pumpTime:"",mechanicalBlower:"",screenPacks:""},
   inventory:{talcBoxes:"",silo1:"",silo2:"",silo3:"",silo4:"",silo5:"",butane:"",co2:""},
-  notes:"", scanMeta:{}
+  notes:""
 };
-LINES.forEach(l=>{state.productivity[l]={butane:"",co2:""};state.blends[l]={};state.equipment[l]={};state.scanMeta[l]={}});
+LINES.forEach(l=>{state.productivity[l]={butane:"",co2:""};state.blends[l]={};state.equipment[l]={}});
 
-let activeProductLine="EXT1",activeEquipmentLine="EXT1",pendingScan=null,scanSession=null,cameraSession=null,cameraStream=null;
+let activeProductLine="EXT1",activeEquipmentLine="EXT1";
 
 function el(tag,cls="",text=""){const n=document.createElement(tag);if(cls)n.className=cls;if(text)n.textContent=text;return n}
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]))}
@@ -71,7 +71,7 @@ function mergeState(src){
   if(!src)return;
   if(src.meta)Object.assign(state.meta,src.meta);if(src.safety)Object.assign(state.safety,src.safety);if(src.common)Object.assign(state.common,src.common);if(src.inventory)Object.assign(state.inventory,src.inventory);if(typeof src.notes==="string")state.notes=src.notes;
   LINES.forEach(l=>{
-    Object.assign(state.productivity[l],src.productivity?.[l]||{});Object.assign(state.blends[l],src.blends?.[l]||{});Object.assign(state.equipment[l],src.equipment?.[l]||{});Object.assign(state.scanMeta[l],src.scanMeta?.[l]||{});
+    Object.assign(state.productivity[l],src.productivity?.[l]||{});Object.assign(state.blends[l],src.blends?.[l]||{});Object.assign(state.equipment[l],src.equipment?.[l]||{});
     if(!hasValue(state.productivity[l].butane)&&hasValue(src.productivity?.[l]?.butaneCo2)){
       const m=String(src.productivity[l].butaneCo2).match(/^\s*(-?\d+(?:\.\d+)?)\s*[\/:,-]\s*(-?\d+(?:\.\d+)?)\s*$/);if(m){state.productivity[l].butane=m[1];state.productivity[l].co2=m[2]}
     }
@@ -100,17 +100,11 @@ function statusClass(value,rule){
   return"";
 }
 
-function photoButton(kind,label){
-  const b=el("button","photo-btn",label);b.type="button";
-  b.onclick=()=>openCameraScanner(kind);
-  return b;
-}
 
 function renderProductivity(){
   const host=$("productivity");host.innerHTML="";
   const c=sectionCard("Productivity / Blends","One line at a time — report combines all four lines");
   c.appendChild(lineSelector(activeProductLine,l=>activeProductLine=l,renderProductivity));
-  const tools=el("div","photo-tools");tools.appendChild(photoButton("control","📷 Scan Screen — Control"));tools.appendChild(photoButton("blend","📷 Scan Screen — Blend"));tools.appendChild(el("div","photo-help","Point the phone at the EPIC screen and scan it. You can also choose a saved photo. Every detected value is reviewed before it is applied."));c.appendChild(tools);
 
   const grid=el("div","field-grid");
   productivityFields.forEach(([key,label,type,meta,rule])=>{const f=el("label","field "+statusClass(state.productivity[activeProductLine][key],rule));f.appendChild(document.createTextNode(label));const i=document.createElement("input");i.type=type;if(type==="number"){i.inputMode="decimal";i.step="any"}i.value=state.productivity[activeProductLine][key]??"";i.oninput=()=>{state.productivity[activeProductLine][key]=i.value;save();renderProductivitySoft()};f.appendChild(i);if(meta)f.appendChild(el("span","meta",meta));grid.appendChild(f)});c.appendChild(grid);
@@ -123,135 +117,6 @@ function renderProductivity(){
   const bg=el("div","field-grid");blendFields.forEach(([key,label])=>{const f=el("label","field");f.appendChild(document.createTextNode(label));const i=document.createElement("input");i.type=key==="silo"?"text":"number";if(i.type==="number"){i.inputMode="decimal";i.step="any"}i.value=state.blends[activeProductLine][key]??"";i.oninput=()=>{state.blends[activeProductLine][key]=i.value;save()};f.appendChild(i);bg.appendChild(f)});c.appendChild(bg);host.appendChild(c);
 }
 function renderProductivitySoft(){document.querySelectorAll("#productivity .field-grid:first-of-type .field").forEach((f,i)=>{const input=f.querySelector("input"),rule=productivityFields[i]?.[4];if(input)f.className="field "+statusClass(input.value,rule)})}
-
-const scanFieldLabels={
-  control:{lineSpeed:"Line Speed (S-Wrap actual)",diePressure:"Die Pressure",dieMelt:"Die Melt",primaryLoad:"Primary Motor Load",primaryScrew:"Primary Screw Speed",secondaryLoad:"Secondary Motor Load",secondaryScrew:"Secondary Screw Speed",differential:"Differential",butane:"Butane set point",co2:"CO₂ set point"},
-  blend:{virgin1:"Virgin 1",fluff:"Fluff",talc:"Talc",virgin2:"Virgin 2"}
-};
-
-function defaultFrame(img,kind=scanSession?.kind){
-  if(img.naturalHeight>img.naturalWidth){
-    if(kind==="blend")return[{x:.004,y:.347},{x:.996,y:.337},{x:.996,y:.833},{x:.004,y:.821}];
-    return[{x:.006,y:.374},{x:.995,y:.361},{x:.988,y:.792},{x:.008,y:.789}];
-  }
-  return[{x:.02,y:.04},{x:.98,y:.04},{x:.98,y:.96},{x:.02,y:.96}];
-}
-function updateFrameOverlay(){
-  if(!scanSession)return;const wrap=$("frameWrap"),r=wrap.getBoundingClientRect();
-  scanSession.points.forEach((p,i)=>{const h=wrap.querySelector(`.frame-handle[data-i="${i}"]`);h.style.left=(p.x*100)+"%";h.style.top=(p.y*100)+"%"});
-  $("framePolygon").setAttribute("points",scanSession.points.map(p=>`${p.x*1000},${p.y*1000}`).join(" "));
-}
-function bindFrameHandles(){
-  $("frameWrap").querySelectorAll(".frame-handle").forEach(h=>{
-    h.onpointerdown=e=>{if(!scanSession)return;e.preventDefault();h.setPointerCapture?.(e.pointerId);scanSession.drag=Number(h.dataset.i)};
-    h.onpointermove=e=>{if(!scanSession||scanSession.drag!==Number(h.dataset.i))return;e.preventDefault();const r=$("frameWrap").getBoundingClientRect();scanSession.points[scanSession.drag]={x:Math.max(0,Math.min(1,(e.clientX-r.left)/r.width)),y:Math.max(0,Math.min(1,(e.clientY-r.top)/r.height))};updateFrameOverlay()};
-    h.onpointerup=h.onpointercancel=e=>{if(scanSession)scanSession.drag=null};
-  });
-}
-function cleanupScan(){if(scanSession?.objectUrl)URL.revokeObjectURL(scanSession.objectUrl);scanSession=null;pendingScan=null}
-
-function stopCamera(){
-  if(cameraStream){cameraStream.getTracks().forEach(t=>t.stop());cameraStream=null}
-  const v=$("cameraVideo");if(v)v.srcObject=null;
-}
-async function openCameraScanner(kind){
-  stopCamera();cameraSession={kind,line:activeProductLine};
-  $("cameraTitle").textContent=`${kind==="control"?"Control":"Blend"} scan — ${activeProductLine}`;
-  $("cameraGuide").style.aspectRatio=kind==="blend"?"1.58 / 1":"1.72 / 1";
-  $("cameraStatus").textContent="Starting camera…";
-  $("cameraNotice").className="scan-notice info";
-  $("cameraNotice").textContent="Fit the light EPIC screen inside the blue frame, hold steady, then tap Scan Screen.";
-  $("cameraDialog").showModal();
-  try{
-    if(!navigator.mediaDevices?.getUserMedia)throw new Error("Live camera is not available in this browser.");
-    cameraStream=await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080}},
-      audio:false
-    });
-    const v=$("cameraVideo");v.srcObject=cameraStream;await v.play();
-    $("cameraStatus").textContent="Camera ready — fill the blue frame with the EPIC screen.";
-  }catch(e){
-    $("cameraStatus").textContent="Live camera unavailable. Use Choose Photo.";
-    $("cameraNotice").className="scan-notice bad";
-    $("cameraNotice").textContent=(e?.message||"Camera could not start.")+" You can still take or choose a photo.";
-  }
-}
-function canvasToFile(canvas,name){
-  return new Promise((resolve,reject)=>{
-    if(canvas.toBlob)canvas.toBlob(b=>b?resolve(new File([b],name,{type:"image/jpeg"})):reject(new Error("Could not capture the camera image.")),"image/jpeg",.94);
-    else{
-      try{const data=canvas.toDataURL("image/jpeg",.94),bin=atob(data.split(",")[1]),a=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)a[i]=bin.charCodeAt(i);resolve(new File([a],name,{type:"image/jpeg"}))}catch(e){reject(e)}
-    }
-  });
-}
-async function captureCameraScreen(){
-  if(!cameraSession)return;
-  const v=$("cameraVideo");if(!v?.videoWidth||!v?.videoHeight){$("cameraStatus").textContent="Camera is not ready yet.";return}
-  const view=$("cameraView").getBoundingClientRect(),guide=$("cameraGuide").getBoundingClientRect();
-  const vw=v.videoWidth,vh=v.videoHeight,scale=Math.max(view.width/vw,view.height/vh);
-  const shownW=vw*scale,shownH=vh*scale,offX=(shownW-view.width)/2,offY=(shownH-view.height)/2;
-  let sx=(guide.left-view.left+offX)/scale,sy=(guide.top-view.top+offY)/scale,sw=guide.width/scale,sh=guide.height/scale;
-  sx=Math.max(0,Math.min(vw-1,sx));sy=Math.max(0,Math.min(vh-1,sy));sw=Math.min(sw,vw-sx);sh=Math.min(sh,vh-sy);
-  const out=document.createElement("canvas"),targetW=1600;out.width=targetW;out.height=Math.round(targetW*(sh/sw));
-  out.getContext("2d",{alpha:false}).drawImage(v,sx,sy,sw,sh,0,0,out.width,out.height);
-  $("cameraStatus").textContent="Captured — reading EPIC…";
-  try{
-    const f=await canvasToFile(out,`epic-${cameraSession.kind}-${Date.now()}.jpg`);
-    const session={...cameraSession};stopCamera();$("cameraDialog").close();startPhotoScan(session.kind,f,{auto:true,line:session.line});
-  }catch(e){$("cameraStatus").textContent=e?.message||"Could not capture screen."}
-}
-function chooseCameraPhoto(){
-  if(!cameraSession)return;
-  $("cameraFallbackInput").click();
-}
-
-function startPhotoScan(kind,file,options={}){
-  cleanupScan();const url=URL.createObjectURL(file);scanSession={kind,line:options.line||activeProductLine,file,objectUrl:url,points:null,drag:null,auto:!!options.auto};pendingScan=null;
-  $("scanTitle").textContent=`${kind==="control"?"Control":"Blend"} scan — ${scanSession.line}`;
-  const img=$("frameImage");
-  img.onload=()=>{
-    scanSession.points=scanSession.auto?[{x:.002,y:.002},{x:.998,y:.002},{x:.998,y:.998},{x:.002,y:.998}]:defaultFrame(img,kind);
-    updateFrameOverlay();
-    if(scanSession.auto){
-      $("frameStage").classList.add("hidden");$("resultStage").classList.remove("hidden");
-      setTimeout(readAlignedPhoto,40);
-    }else{
-      $("frameStage").classList.remove("hidden");$("resultStage").classList.add("hidden");
-    }
-  };
-  img.src=url;$("scanDialog").showModal();
-}
-async function readAlignedPhoto(){
-  if(!scanSession?.points)return;
-  const session=scanSession,pts=session.points;
-  const frameLooksValid=pts[0].x<pts[1].x&&pts[3].x<pts[2].x&&pts[0].y<pts[3].y&&pts[1].y<pts[2].y;
-  if(!frameLooksValid){alert("The four points are crossed. Put them on the screen corners: top-left, top-right, bottom-right, bottom-left.");return}
-  $("frameStage").classList.add("hidden");$("resultStage").classList.remove("hidden");$("scanProgress").classList.remove("hidden");$("scanPreview").classList.add("hidden");$("scanNotice").classList.add("hidden");$("scanFields").innerHTML="";$("scanProgressTitle").textContent="Reading EPIC photo…";$("scanProgressText").textContent="Preparing image";
-  try{
-    const r=await window.EpicPhotoOCR.read(session.file,session.kind,session.points,(status,pct)=>{if(scanSession===session)$("scanProgressText").textContent=(status||"Reading")+(pct!==null&&pct!==undefined?` · ${pct}%`:"")});
-    if(scanSession!==session)return;
-    pendingScan={kind:session.kind,line:session.line,fields:r.fields||{},title:r.title||{}};$("scanProgress").classList.add("hidden");
-    const canvas=$("scanPreview"),src=r.warpedCanvas;canvas.width=src.width;canvas.height=src.height;canvas.getContext("2d").drawImage(src,0,0);canvas.classList.remove("hidden");
-    renderScanFields();
-    const count=Object.keys(pendingScan.fields).length,detected=pendingScan.title?.line,selected=Number(pendingScan.line.replace("EXT",""));
-    const notice=$("scanNotice");notice.className="scan-notice";
-    if(detected&&detected!==selected){notice.classList.add("bad");notice.textContent=`Warning: EPIC appears to show Extruder ${detected}, but you selected ${pendingScan.line}. Review before applying.`}
-    else if(count){notice.classList.add("good");notice.textContent=`Detected ${count} value${count===1?"":"s"}${detected?` from Extruder ${detected}`:""}. Review every value before applying. Blank fields stay manual.`}
-    else{notice.textContent="No values were read confidently. Adjust the four screen corners, use a closer photo with less glare, and try again."}
-    notice.classList.remove("hidden");
-  }catch(e){$("scanProgress").classList.add("hidden");const n=$("scanNotice");n.className="scan-notice bad";n.textContent=e?.message||"Photo reader failed. You can still enter the values manually.";n.classList.remove("hidden")}
-}
-function renderScanFields(){
-  const host=$("scanFields");host.innerHTML="";const labels=scanFieldLabels[pendingScan.kind];
-  for(const [key,label] of Object.entries(labels)){
-    const d=pendingScan.fields[key]||{value:"",confidence:"low",score:0},row=el("div","scan-row"),cb=document.createElement("input");cb.type="checkbox";cb.checked=hasValue(d.value)&&d.confidence!=="low";cb.dataset.key=key;
-    const lab=el("label");lab.appendChild(document.createTextNode(label));const existing=pendingScan.kind==="blend"?state.blends[pendingScan.line][key]:state.productivity[pendingScan.line][key];const meta=d.value?`${d.confidence||"low"} confidence${hasValue(existing)?` · current ${existing}`:""}`:"not detected";lab.appendChild(el("small","confidence "+(d.confidence||"low"),meta));
-    const inp=document.createElement("input");inp.type="text";inp.inputMode="decimal";inp.value=d.value||"";inp.dataset.key=key;inp.oninput=()=>{if(inp.value.trim())cb.checked=true};row.append(cb,lab,inp);host.appendChild(row);
-  }
-}
-function applyPendingScan(){
-  if(!pendingScan)return;document.querySelectorAll("#scanFields .scan-row").forEach(row=>{const cb=row.querySelector('input[type="checkbox"]'),inp=row.querySelector('input[type="text"]');if(!cb.checked||!inp.value.trim())return;const key=inp.dataset.key;if(pendingScan.kind==="blend")state.blends[pendingScan.line][key]=inp.value.trim();else state.productivity[pendingScan.line][key]=inp.value.trim()});state.scanMeta[pendingScan.line][pendingScan.kind]=new Date().toISOString();save();$("scanDialog").close();cleanupScan();renderProductivity();
-}
 
 function yesNoControl(obj,key,good){const w=el("div","yesno");[["Y","YES"],["N","NO"]].forEach(([v,label])=>{const selected=obj[key]===v,b=el("button","yn-btn"+(selected?" selected "+(v===good?"good":"bad"):""),label);b.type="button";b.onclick=()=>{obj[key]=v;save();renderEquipment()};w.appendChild(b)});return w}
 function renderEquipment(){
@@ -287,33 +152,16 @@ function generateReport(){
 
   const report=`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Sr. Lead Report</title><style>
   @page{size:letter;margin:.38in}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#1a2530;margin:0;background:#eef2f5}.toolbar{position:sticky;top:0;background:#0f3557;color:#fff;padding:10px;display:flex;gap:8px;justify-content:center;z-index:10}.toolbar button{border:0;border-radius:9px;padding:10px 14px;font-weight:700}.paper{max-width:900px;margin:18px auto;background:#fff;padding:26px;box-shadow:0 5px 25px #0002}.head{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:4px solid #0f3557;padding-bottom:10px}h1{font-size:22px;margin:0;color:#0f3557}.dcn{font-size:10px;color:#677481}.meta{display:grid;grid-template-columns:1fr 1.8fr .55fr;gap:8px;margin:12px 0}.meta div{border:1px solid #cbd5de;border-radius:7px;padding:7px}.meta b{display:block;font-size:9px;text-transform:uppercase;color:#6c7884;margin-bottom:2px}.summary{background:#f1f6fa;border-left:5px solid #0f3557;padding:8px 10px;margin:10px 0;font-size:11px;font-weight:700}h2{font-size:13px;color:#0f3557;background:#eaf0f5;padding:6px;margin:12px 0 0;border:1px solid #c7d3dc}table{width:100%;border-collapse:collapse;font-size:9.4px}th,td{border:1px solid #c7d3dc;padding:4px;text-align:center;vertical-align:middle}th{text-align:left;background:#f8fafb}.cat{font-weight:700;text-align:left;width:95px}.yes{color:#1b6f3d;font-weight:800;background:#f0f8f3}.no{color:#b32e2e;font-weight:800;background:#fff1f1}.ok{color:#176b38;background:#eff8f2}.warn{color:#946200;background:#fff7dd}.bad{color:#aa2929;background:#fff0f0}.sheet{break-before:page}.keep{break-inside:avoid}.silo-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;padding:10px 2px 4px}.silo-card{text-align:center}.silo-art{width:76px;height:105px;margin:0 auto 4px;position:relative}.silo-cap{position:absolute;top:2px;left:12px;width:52px;height:13px;border:3px solid #2f8a5b;border-bottom:0;border-radius:50% 50% 0 0;background:#ecf8f1}.silo-body{position:absolute;top:12px;left:12px;width:52px;height:60px;border:3px solid #2f8a5b;border-top:0;background:linear-gradient(#e6f6ed,#cfeedd);display:flex;align-items:center;justify-content:center}.silo-body span{font-weight:800;color:#236d48;font-size:9px}.silo-cone{position:absolute;top:72px;left:21px;width:0;height:0;border-left:17px solid transparent;border-right:17px solid transparent;border-top:22px solid #9fd9b7}.silo-leg{position:absolute;top:89px;width:3px;height:15px;background:#4c7660}.silo-leg.l1{left:25px}.silo-leg.l2{right:25px}.silo-lbs{font-weight:800;color:#0f3557;font-size:12px}.silo-lbs small{font-size:9px;color:#677481}.notes{min-height:90px;border:1px solid #c7d3dc;padding:8px;white-space:pre-wrap;font-size:10px}.foot{margin-top:12px;font-size:9px;color:#697681;display:flex;justify-content:space-between}@media print{body{background:white}.toolbar{display:none}.paper{margin:0;box-shadow:none;padding:0}.sheet{break-before:page}}@media(max-width:700px){.paper{margin:0;padding:10px}.meta{grid-template-columns:1fr 1.5fr .5fr}.silo-grid{grid-template-columns:repeat(5,1fr)}}
-  </style></head><body><div class="toolbar"><button onclick="window.print()">Print / Save PDF</button><button onclick="window.close()">Close</button></div><main class="paper"><div class="head"><div><h1>EXTRUSION SR. LEAD DAILY CHECKLIST</h1><div class="dcn">DCN TN-100-00003</div></div><div class="dcn">Digital Report</div></div><div class="meta"><div><b>Date</b>${escapeHtml(formatDate(state.meta.date))}</div><div><b>Sr. Lead</b>${escapeHtml(state.meta.lead||"—")}</div><div><b>Shift</b>${escapeHtml(state.meta.shift)}</div></div><div class="summary">${escapeHtml(summary)}</div><h2>SAFETY / FORK TRUCK / QUALITY / HOUSEKEEPING</h2><table>${safetyRows}</table><section class="sheet keep"><h2>PRODUCTIVITY / BLENDS</h2><table><thead><tr><th>Productivity</th><th>Plan</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${pRows}${gasRows}${pctRow}</tbody></table><table style="margin-top:6px"><thead><tr><th>Blends</th><th>Plan</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${blendRows}</tbody></table></section><section class="sheet"><h2>EQUIPMENT INSPECTION</h2><table><thead><tr><th>Item</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${eqRows}</tbody></table><table style="margin-top:7px"><tbody><tr><th>Pump Room Inspected</th><td>${state.common.pumpRoom||"—"}</td><th>Time</th><td>${escapeHtml(format12h(state.common.pumpTime))}</td></tr><tr><th>Mechanical Room Blower Powder Barrel Checked</th><td>${state.common.mechanicalBlower||"—"}</td><th>All screen packs clean and accounted</th><td>${state.common.screenPacks||"—"}</td></tr></tbody></table><h2>INVENTORY LEVELS</h2><div class="silo-grid">${silos}</div><table>${invRows}</table><h2>NOTES</h2><div class="notes">${escapeHtml(state.notes||"")}</div><div class="foot"><span>DCN TN-100-00003</span><span>Generated from Sr. Lead Checklist PWA v1.5</span></div></section></main></body></html>`;
+  </style></head><body><div class="toolbar"><button onclick="window.print()">Print / Save PDF</button><button onclick="window.close()">Close</button></div><main class="paper"><div class="head"><div><h1>EXTRUSION SR. LEAD DAILY CHECKLIST</h1><div class="dcn">DCN TN-100-00003</div></div><div class="dcn">Digital Report</div></div><div class="meta"><div><b>Date</b>${escapeHtml(formatDate(state.meta.date))}</div><div><b>Sr. Lead</b>${escapeHtml(state.meta.lead||"—")}</div><div><b>Shift</b>${escapeHtml(state.meta.shift)}</div></div><div class="summary">${escapeHtml(summary)}</div><h2>SAFETY / FORK TRUCK / QUALITY / HOUSEKEEPING</h2><table>${safetyRows}</table><section class="sheet keep"><h2>PRODUCTIVITY / BLENDS</h2><table><thead><tr><th>Productivity</th><th>Plan</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${pRows}${gasRows}${pctRow}</tbody></table><table style="margin-top:6px"><thead><tr><th>Blends</th><th>Plan</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${blendRows}</tbody></table></section><section class="sheet"><h2>EQUIPMENT INSPECTION</h2><table><thead><tr><th>Item</th>${LINES.map(l=>`<th>${l}</th>`).join("")}</tr></thead><tbody>${eqRows}</tbody></table><table style="margin-top:7px"><tbody><tr><th>Pump Room Inspected</th><td>${state.common.pumpRoom||"—"}</td><th>Time</th><td>${escapeHtml(format12h(state.common.pumpTime))}</td></tr><tr><th>Mechanical Room Blower Powder Barrel Checked</th><td>${state.common.mechanicalBlower||"—"}</td><th>All screen packs clean and accounted</th><td>${state.common.screenPacks||"—"}</td></tr></tbody></table><h2>INVENTORY LEVELS</h2><div class="silo-grid">${silos}</div><table>${invRows}</table><h2>NOTES</h2><div class="notes">${escapeHtml(state.notes||"")}</div><div class="foot"><span>DCN TN-100-00003</span></div></section></main></body></html>`;
   const w=window.open("","_blank");if(!w){alert("Allow pop-ups to generate the report.");return}w.document.open();w.document.write(report);w.document.close();
 }
 
-bindFrameHandles();
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));b.classList.add("active");$(b.dataset.target).classList.add("active")});
 $("date").addEventListener("change",()=>{updateDateDisplay();save()});["lead","shift"].forEach(id=>$(id).addEventListener("change",save));
 $("saveBtn").onclick=()=>{save();const b=$("saveBtn"),old=b.textContent;b.textContent="Saved ✓";setTimeout(()=>b.textContent=old,900)};
 $("resetBtn").onclick=()=>{if(confirm("Clear the current shift checklist?")){localStorage.removeItem(KEY);OLD_KEYS.forEach(k=>localStorage.removeItem(k));location.reload()}};
 $("reportBtn").onclick=generateReport;
 
-$("cameraCapture").onclick=captureCameraScreen;
-$("choosePhotoBtn").onclick=chooseCameraPhoto;
-$("cameraClose").onclick=()=>$("cameraDialog").close();
-$("cameraDialog").addEventListener("close",stopCamera);
-$("cameraFallbackInput").onchange=()=>{
-  const f=$("cameraFallbackInput").files?.[0];$("cameraFallbackInput").value="";
-  if(!f||!cameraSession)return;
-  const session={...cameraSession};stopCamera();$("cameraDialog").close();startPhotoScan(session.kind,f,{auto:false,line:session.line});
-};
-
-$("frameReset").onclick=()=>{if(scanSession){scanSession.points=defaultFrame($("frameImage"),scanSession.kind);updateFrameOverlay()}};
-$("scanRead").onclick=readAlignedPhoto;
-$("scanBack").onclick=()=>{$("resultStage").classList.add("hidden");$("frameStage").classList.remove("hidden");setTimeout(updateFrameOverlay,20)};
-$("scanApply").onclick=applyPendingScan;
-$("scanClose").onclick=()=>$("scanDialog").close();
-$("scanDialog").addEventListener("close",cleanupScan);
 $("settingsBtn").onclick=()=>{const s=JSON.parse(localStorage.getItem(SETTINGS_KEY)||"{}");$("rollCountUrl").value=s.rollCountUrl||"";$("settingsDialog").showModal()};
 $("saveSettings").onclick=()=>localStorage.setItem(SETTINGS_KEY,JSON.stringify({rollCountUrl:$("rollCountUrl").value.trim()}));
 

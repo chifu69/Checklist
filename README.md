@@ -1,79 +1,31 @@
-# Extrusion Sr. Lead Daily Checklist — v1.5
+# Extrusion Sr. Lead Daily Checklist — v1.7
 
-Phone-friendly PWA based on the supplied Sr. Lead Daily Checklist, with a modern printable report and an EPIC photo reader.
+Phone-friendly PWA based on the supplied Sr. Lead Daily Checklist.
 
-## Current checklist behavior
-- Safety / Fork Truck / Quality / Housekeeping.
-- Productivity and Blends are one section in the app and one report section.
-- EXT1–EXT4 are entered one line at a time.
-- Inside Air Pressure: 20–50 PSI.
-- Outside Air Pressure: 3–8 PSI.
-- Differential: <600 green, 600–800 yellow, >800 red.
-- Equipment YES/NO colors follow the meaning of the question. For example, "Noises or any issues": NO is good/green; YES is bad/red.
-- Butane and CO2 have separate lb/hr fields.
-- Per-line CO2 percentage = CO2 / (Butane + CO2) × 100. Under 15% is yellow; 15% or higher is green.
-- Silo #1–#5 inventory is pounds only.
-- CO2 fill level and Trim Speeds were removed.
-- Roll Count remains a separate app; no Roll Count completion warning appears in this report.
-- Pump Room time prints in 12-hour AM/PM format.
+## Current workflow
+- Safety / Fork Truck / Quality / Housekeeping
+- Productivity + Blends together for EXT1–EXT4
+- Manual entry for process values
+- Butane and CO₂ entered separately
+- CO₂ percentage calculated per line
+- Equipment inspection with correct good/bad YES/NO logic
+- Inventory with five silos in pounds
+- Talc minimum warning
+- Notes
+- Modern printable report
+- Roll Count remains a separate app
 
-## EPIC photo reader
-There are two photo buttons for the selected line:
-- Upload Photo — Control
-- Upload Photo — Blend
+## Important
+The EPIC photo / live-camera reader has been removed from this version.
+The checklist is intentionally manual for now so the production workflow stays reliable and simple.
+A scanner can be revisited later with a stronger vision/OCR implementation.
 
-After choosing or taking a photo, align the four blue points to the corners of the light EPIC display area. The reader perspective-corrects the screen, reads only the expected field locations, validates plausible numeric ranges, and then shows every detected value for review before anything is applied.
-
-### Control photo fields
-- Line Speed: S-Wrap Actual Speed
-- Die Pressure
-- Die Melt: Secondary Extruder Melt Temp
-- Primary Motor Load
-- Primary Screw Speed
-- Secondary Motor Load
-- Secondary Screw Speed
-- Differential
-- Butane set point
-- CO2 set point
-
-Designator, Outside Air and Inside Air remain manual because they are not shown on the supplied Line Control screen.
-
-### Blend photo fields
-Reads the Independent SP values for:
-- Virgin 1
-- Fluff
-- Talc
-- Virgin 2
-
-Silo in Use remains manual.
-
-### Accuracy safeguards
-- Four-corner screen alignment before OCR.
-- Perspective correction.
-- Small field-specific OCR crops instead of relying on one full-screen text scan.
-- Numeric range validation and decimal-repair fallback for values such as 112.6 or 58.3.
-- Confidence labels in the review screen.
-- Low-confidence readings are not selected automatically.
-- Existing values are shown during review before replacement.
-- If the title can be read and the EPIC extruder number differs from the selected EXT line, the app warns before applying.
-
-The OCR engine is loaded from Tesseract.js on first use. The photo itself is processed in the browser by this app; it is not uploaded to an app server.
-
-## Running
-Serve the folder through HTTP/HTTPS. For simple PC testing inside the folder:
-
-    python -m http.server 8080
-
-Then open `http://localhost:8080`.
-
-For iPhone installation, host it over HTTPS and use Add to Home Screen.
-
-
-## v1.5 live EPIC scanner
-- Date uses a custom phone-friendly display so iOS cannot visually overlap Date and Shift.
-- Control and Blend buttons now open a live rear-camera scanner when the browser permits camera access.
-- Align the light EPIC screen inside the blue 1.72:1 guide and tap **Scan Screen**.
-- The captured guide area is cropped before OCR, reducing background, bezel, wall, and perspective noise.
-- Saved-photo fallback remains available and keeps the four-corner fine adjustment.
-- Numeric OCR now uses a tighter crop, larger upscale, contrast normalization, numeric-only recognition, and multiple segmentation fallbacks.
-- All detected values remain review-before-apply; the scanner never silently commits readings.
+## Report rules
+- Date, Sr. Lead, and Shift appear on one row.
+- Pump Room time displays in 12-hour AM/PM format.
+- Outside Air target: 3–8 PSI.
+- Inside Air target: 20–50 PSI.
+- Differential: under 600 green, 600–800 yellow, above 800 red.
+- CO₂ Fill Level and Trim Speeds are not included.
+- Roll Count completion is not included.
+- The generated-from-PWA footer text is not included.
