@@ -128,69 +128,87 @@ function drawSilo(ctx,cx,y,label,value){
   const t=(value!==""&&value!=null&&!Number.isNaN(Number(value)))?Number(value).toLocaleString("en-US",{maximumFractionDigits:2})+" lb":"—";
   ctext(ctx,t,cx,y+160,{bold:true,size:18,color:c.text,align:"center"});
 }
+function clampPct(v){const n=Number(v);return Number.isFinite(n)?Math.max(0,Math.min(100,n)):0}
+function drawButaneTank(ctx,x,y,pct){
+  const w=126,h=42,p=clampPct(pct);
+  ctx.save();roundRectPath(ctx,x,y,w,h,21);ctx.clip();ctx.fillStyle="#f7f9fb";ctx.fillRect(x,y,w,h);ctx.fillStyle="#79c59a";ctx.fillRect(x+3,y+3,(w-6)*p/100,h-6);ctx.restore();
+  ctx.strokeStyle="#7b8995";ctx.lineWidth=3;roundRectPath(ctx,x,y,w,h,21);ctx.stroke();
+  ctx.fillStyle="#7b8995";ctx.fillRect(x+24,y+h,5,9);ctx.fillRect(x+w-29,y+h,5,9);ctx.strokeRect(x-8,y+12,8,18);
+}
+function drawCo2Tank(ctx,x,y,pct){
+  const w=48,h=78,p=clampPct(pct);
+  ctx.save();roundRectPath(ctx,x,y,w,h,15);ctx.clip();ctx.fillStyle="#f7f9fb";ctx.fillRect(x,y,w,h);ctx.fillStyle="#79c59a";ctx.fillRect(x+3,y+h-3-(h-6)*p/100,w-6,(h-6)*p/100);ctx.restore();
+  ctx.strokeStyle="#7b8995";ctx.lineWidth=3;roundRectPath(ctx,x,y,w,h,15);ctx.stroke();ctx.strokeRect(x+17,y-10,14,10);
+  ctx.fillStyle="#7b8995";ctx.fillRect(x+10,y+h,4,8);ctx.fillRect(x+w-14,y+h,4,8);
+  ctext(ctx,"CO2",x+w/2,y+29,{bold:true,size:10,color:"#0f57b7",align:"center"});
+}
+function drawInventoryRows(ctx,y,d){
+  const x=46,labelW=850,valueW=333,totalW=1183;
+  const row=(label,h,drawValue,opt={})=>{
+    ctx.fillStyle=opt.bg||"#fff";ctx.fillRect(x+labelW,y,valueW,h);ctx.fillStyle="#fff";ctx.fillRect(x,y,labelW,h);
+    ctx.strokeStyle=COLORS.line;ctx.lineWidth=1;ctx.strokeRect(x,y,labelW,h);ctx.strokeRect(x+labelW,y,valueW,h);
+    ctext(ctx,label,x+10,y+(h-18)/2,{bold:true,size:16});drawValue(x+labelW,y,valueW,h);y+=h;
+  };
+  const t=Number(d.inventory?.talcBoxes),hasTalc=d.inventory?.talcBoxes!==""&&Number.isFinite(t);
+  const talcBg=hasTalc?(t<14?COLORS.redBg:COLORS.greenBg):"#fff",talcColor=hasTalc?(t<14?COLORS.red:COLORS.green):COLORS.ink;
+  row("Talc (14 Boxes Minimum)",44,(vx,vy,vw,vh)=>ctext(ctx,hasTalc?d.inventory.talcBoxes+" boxes":"—",vx+vw/2,vy+12,{bold:hasTalc,size:16,color:talcColor,align:"center"}),{bg:talcBg});
+  const b=Number(d.inventory?.butane),hasB=d.inventory?.butane!==""&&Number.isFinite(b);
+  row("Butane Tank",58,(vx,vy,vw,vh)=>{if(!hasB){ctext(ctx,"—",vx+vw/2,vy+18,{size:16,align:"center"});return}drawButaneTank(ctx,vx+48,vy+8,b);ctext(ctx,fmtNum(b,1)+"%",vx+235,vy+18,{bold:true,size:20,color:COLORS.navy,align:"center"})});
+  const c=calcCo2Tank(d.inventory?.co2);
+  row("CO2 Tank Level",94,(vx,vy,vw,vh)=>{if(!c){ctext(ctx,"—",vx+vw/2,vy+34,{size:16,align:"center"});return}drawCo2Tank(ctx,vx+58,vy+9,c.pct);ctext(ctx,fmtNum(c.pct,1)+"%",vx+220,vy+18,{bold:true,size:20,color:COLORS.navy,align:"center"});ctext(ctx,fmtNum(c.inch)+" in. WC | "+fmtNum(c.gal)+" gal",vx+220,vy+48,{size:13,color:COLORS.muted,align:"center"})});
+  return y;
+}
 function makeCanvas(){const c=document.createElement("canvas");c.width=1275;c.height=1650;return c}
 function renderPdfPages(d){
   const pages=[];
+  const widths=[300,300,146,146,146,145];
+  const productRows=()=>{
+    const rows=[[{text:"Productivity",bold:true},{text:"Plan",bold:true},{text:"EXT1",bold:true,align:"center"},{text:"EXT2",bold:true,align:"center"},{text:"EXT3",bold:true,align:"center"},{text:"EXT4",bold:true,align:"center"}]];
+    rows.push([{text:"Line Status",bold:true},{text:"—",align:"center"},...["EXT1","EXT2","EXT3","EXT4"].map(l=>({text:d.lineStatus?.[l]||"RUNNING",align:"center",bg:d.lineStatus?.[l]==="DOWN"?"#eef1f4":COLORS.greenBg,color:d.lineStatus?.[l]==="DOWN"?"#5c6874":COLORS.green,bold:true}))]);
+    (d.productivity||[]).forEach(r=>rows.push([{text:r.label,bold:true},{text:r.plan,align:"center"},...r.values.map(v=>statusCell(v.value,v.status))]));
+    (d.gas||[]).forEach(r=>rows.push([{text:r.label,bold:true},{text:r.unit,align:"center"},...r.values.map(v=>({text:v||"—",align:"center"}))]));
+    rows.push([{text:"CO2 %",bold:true},{text:"CO2 / (Butane + CO2)",align:"center"},...(d.co2Pct||[]).map((p,i)=>{const l=["EXT1","EXT2","EXT3","EXT4"][i];if(d.lineStatus?.[l]==="DOWN")return{text:"—",align:"center"};return{text:p==null?"—":p.toFixed(2)+"%",align:"center",bg:p==null?"#fff":p>=15?COLORS.greenBg:COLORS.yellowBg,color:p==null?COLORS.ink:p>=15?COLORS.green:COLORS.yellow,bold:p!=null}})]);
+    return rows;
+  };
+  const blendRows=()=>{const rows=[[{text:"Blends",bold:true},{text:"Plan",bold:true},{text:"EXT1",bold:true,align:"center"},{text:"EXT2",bold:true,align:"center"},{text:"EXT3",bold:true,align:"center"},{text:"EXT4",bold:true,align:"center"}]];(d.blends||[]).forEach(r=>rows.push([{text:r.label,bold:true},{text:"—",align:"center"},...r.values.map(v=>({text:v||"—",align:"center"}))]));return rows};
 
   let c=makeCanvas(),ctx=c.getContext("2d"),y=drawHeader(ctx,d,true);
   y=drawSummary(ctx,y,d.problems||[]);
-  y=section(ctx,"SAFETY / FORK TRUCK / QUALITY / HOUSEKEEPING",y+10);
-  const srows=(d.safety||[]).map((r,i)=>[
-    {text:r.cat,bold:true},
-    {text:r.done?"✓":"",align:"center",color:r.done?COLORS.green:COLORS.red,bold:true},
-    {text:r.label},
+  y=section(ctx,"SAFETY / FORK TRUCK / QUALITY / HOUSEKEEPING",y+8);
+  const srows=(d.safety||[]).map(r=>[
+    {text:r.cat,bold:true},{text:r.done?"✓":"",align:"center",color:r.done?COLORS.green:COLORS.red,bold:true},{text:r.label},
     {text:(d.times?.safety&&d.times.safety[r.key])?new Date(d.times.safety[r.key]).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):"—",align:"center",color:COLORS.muted}
   ]);
-  table(ctx,46,y,[235,60,748,140],srows,{size:16,minH:50});
-  pages.push(c);
-
-  c=makeCanvas();ctx=c.getContext("2d");y=drawHeader(ctx,d,false);y=section(ctx,"PRODUCTIVITY / BLENDS",y);
-  const widths=[300,300,146,146,146,145];
-  let prows=[[{text:"Productivity",bold:true},{text:"Plan",bold:true},{text:"EXT1",bold:true,align:"center"},{text:"EXT2",bold:true,align:"center"},{text:"EXT3",bold:true,align:"center"},{text:"EXT4",bold:true,align:"center"}]];
-  prows.push([{text:"Line Status",bold:true},{text:"—",align:"center"},...["EXT1","EXT2","EXT3","EXT4"].map(l=>({text:d.lineStatus?.[l]||"RUNNING",align:"center",bg:d.lineStatus?.[l]==="DOWN"?"#eef1f4":COLORS.greenBg,color:d.lineStatus?.[l]==="DOWN"?"#5c6874":COLORS.green,bold:true}))]);
-  (d.productivity||[]).forEach(r=>prows.push([{text:r.label,bold:true},{text:r.plan,align:"center"},...r.values.map(v=>statusCell(v.value,v.status))]));
-  (d.gas||[]).forEach(r=>prows.push([{text:r.label,bold:true},{text:r.unit,align:"center"},...r.values.map(v=>({text:v||"—",align:"center"}))]));
-  prows.push([{text:"CO2 %",bold:true},{text:"CO2 / (Butane + CO2)",align:"center"},...(d.co2Pct||[]).map((p,i)=>{const l=["EXT1","EXT2","EXT3","EXT4"][i];if(d.lineStatus?.[l]==="DOWN")return{text:"—",align:"center"};return{text:p==null?"—":p.toFixed(2)+"%",align:"center",bg:p==null?"#fff":p>=15?COLORS.greenBg:COLORS.yellowBg,color:p==null?COLORS.ink:p>=15?COLORS.green:COLORS.yellow,bold:p!=null}})]);
-  y=table(ctx,46,y,widths,prows,{size:15,minH:42});y+=16;
-  const brows=[[{text:"Blends",bold:true},{text:"Plan",bold:true},{text:"EXT1",bold:true,align:"center"},{text:"EXT2",bold:true,align:"center"},{text:"EXT3",bold:true,align:"center"},{text:"EXT4",bold:true,align:"center"}]];
-  (d.blends||[]).forEach(r=>brows.push([{text:r.label,bold:true},{text:"—",align:"center"},...r.values.map(v=>({text:v||"—",align:"center"}))]));
-  table(ctx,46,y,widths,brows,{size:15,minH:42});
-  pages.push(c);
+  y=table(ctx,46,y,[235,60,748,140],srows,{size:14,minH:40});
+  const canFitProductivity=y<875;
+  if(canFitProductivity){
+    y=section(ctx,"PRODUCTIVITY / BLENDS",y+10);
+    y=table(ctx,46,y,widths,productRows(),{size:12,minH:29});y+=7;
+    y=table(ctx,46,y,widths,blendRows(),{size:12,minH:29});
+    ctext(ctx,"DCN TN-100-00003",46,1608,{size:12,color:COLORS.muted});pages.push(c);
+  }else{
+    pages.push(c);
+    c=makeCanvas();ctx=c.getContext("2d");y=drawHeader(ctx,d,false);y=section(ctx,"PRODUCTIVITY / BLENDS",y);
+    y=table(ctx,46,y,widths,productRows(),{size:14,minH:36});y+=10;table(ctx,46,y,widths,blendRows(),{size:14,minH:36});pages.push(c);
+  }
 
   c=makeCanvas();ctx=c.getContext("2d");y=drawHeader(ctx,d,false);y=section(ctx,"EQUIPMENT INSPECTION",y);
   const ewidth=[700,121,121,121,120];
   let erows=[[{text:"Item",bold:true},{text:"EXT1",bold:true,align:"center"},{text:"EXT2",bold:true,align:"center"},{text:"EXT3",bold:true,align:"center"},{text:"EXT4",bold:true,align:"center"}]];
   (d.equipment||[]).forEach(r=>erows.push([{text:r.label,bold:true},...r.values.map((v,i)=>{
-    const l=["EXT1","EXT2","EXT3","EXT4"][i],ts=d.times?.equipment?.[l]?.[r.key];
-    const tm=ts?new Date(ts).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):"";
+    const l=["EXT1","EXT2","EXT3","EXT4"][i],ts=d.times?.equipment?.[l]?.[r.key];const tm=ts?new Date(ts).toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"}):"";
     return{text:(v||"—")+(tm?"\n"+tm:""),align:"center",bg:!v?"#fff":v===r.good?COLORS.greenBg:COLORS.redBg,color:!v?COLORS.ink:v===r.good?COLORS.green:COLORS.red,bold:!!v};
   })]));
-  y=table(ctx,46,y,ewidth,erows,{size:15,minH:40});y+=10;
+  y=table(ctx,46,y,ewidth,erows,{size:14,minH:36});y+=8;
   y=table(ctx,46,y,[560,60,420,143],[
     [{text:"Pump Room Inspected",bold:true},{text:d.common?.pumpRoom||"—",align:"center"},{text:"Time",bold:true},{text:d.common?.pumpTime||"—",align:"center"}],
     [{text:"Mechanical Room Blower Powder Barrel Checked",bold:true},{text:d.common?.mechanicalBlower||"—",align:"center"},{text:"All screen packs clean and accounted",bold:true},{text:d.common?.screenPacks||"—",align:"center"}]
-  ],{size:15,minH:48});
-
-  y=section(ctx,"INVENTORY LEVELS",y+18);
-  const centers=[155,395,635,875,1115];
-  for(let i=0;i<5;i++)drawSilo(ctx,centers[i],y+24,"SILO "+(i+1),d.inventory?.["silo"+(i+1)]);
-  y+=225;
-
-  const t=Number(d.inventory?.talcBoxes),hasTalc=d.inventory?.talcBoxes!==""&&Number.isFinite(t);
-  const talcBg=hasTalc?(t<14?COLORS.redBg:COLORS.greenBg):"#fff";
-  const talcColor=hasTalc?(t<14?COLORS.red:COLORS.green):COLORS.ink;
-  y=table(ctx,46,y,[850,333],[
-    [{text:"Talc (14 Boxes Minimum)",bold:true},{text:hasTalc?d.inventory.talcBoxes+" boxes":"—",align:"center",bg:talcBg,color:talcColor,bold:hasTalc}],
-    [{text:"Butane Tank",bold:true},{text:d.inventory?.butane!==""?d.inventory.butane+" %":"—",align:"center"}],
-    [{text:"CO2 Tank Level",bold:true},{text:co2TankReportText(d.inventory?.co2),align:"center"}]
-  ],{size:16,minH:44});
-
-  y=section(ctx,"NOTES",y+18);
-  ctx.strokeStyle=COLORS.line;ctx.strokeRect(46,y,1183,190);
-  wrapped(ctx,d.notes||"",62,y+14,1150,24,{size:17});
-  ctext(ctx,"DCN TN-100-00003",46,1605,{size:14,color:COLORS.muted});
-  pages.push(c);
-
+  ],{size:14,minH:42});
+  y=section(ctx,"INVENTORY LEVELS",y+12);
+  const centers=[155,395,635,875,1115];for(let i=0;i<5;i++)drawSilo(ctx,centers[i],y+16,"SILO "+(i+1),d.inventory?.["silo"+(i+1)]);y+=205;
+  y=drawInventoryRows(ctx,y,d);
+  y=section(ctx,"NOTES",y+12);ctx.strokeStyle=COLORS.line;ctx.strokeRect(46,y,1183,150);wrapped(ctx,d.notes||"",62,y+12,1150,22,{size:15});
+  ctext(ctx,"DCN TN-100-00003",46,1608,{size:12,color:COLORS.muted});pages.push(c);
   return pages;
 }
 function dataUrlBytes(url){

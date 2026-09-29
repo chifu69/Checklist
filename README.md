@@ -60,3 +60,11 @@ Version v1.10 updates:
 - Removed the extra Virgin 2 optional helper text.
 - Removed the extra Silo in Use automatic helper text.
 - No other behavior changed.
+
+
+## v1.15 — Inventory order + tank visuals + compact PDF
+- Inventory input order changed to Talc → Butane → CO2 → Silos 1–5.
+- Report Inventory Levels now shows a compact horizontal Butane tank and vertical CO2 tank with the existing values.
+- CO2 still shows inches WC, calculated gallons, and percent full.
+- Saved/share PDF layout now packs Safety and Productivity/Blends together when space allows, reducing wasted white space and normally producing a tighter two-page report.
+- Equipment / Inventory / Notes remains grouped together and compact.
