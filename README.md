@@ -1,4 +1,4 @@
-# Extrusion Sr. Lead Daily Checklist — v1.9
+# Extrusion Sr. Lead Daily Checklist — v1.16
 
 Phone-friendly PWA based on the supplied Sr. Lead Daily Checklist.
 
@@ -68,3 +68,15 @@ Version v1.10 updates:
 - CO2 still shows inches WC, calculated gallons, and percent full.
 - Saved/share PDF layout now packs Safety and Productivity/Blends together when space allows, reducing wasted white space and normally producing a tighter two-page report.
 - Equipment / Inventory / Notes remains grouped together and compact.
+
+## v1.16 — Approved dynamic Inventory report visuals
+- Report-only Inventory Levels redesign based on the approved mockup.
+- Silo 1 is visually smaller and uses an 80,000 lb capacity.
+- Silos 2–5 use 185,000 lb capacity each.
+- Silo material level is shown inside a semi-transparent silo and follows the entered pounds as a percentage of that silo's capacity.
+- Report silo pound-number color now uses percentage of capacity: below 20% red, 20% to under 50% yellow, 50% and above green.
+- Report attention messages for silos now use those same percentage thresholds.
+- Talc report row now includes a Gaylord box visual and the Talc box count.
+- Butane report tank is semi-transparent, shows the liquid level from the entered percentage, and places the percentage inside the tank.
+- CO2 report tank keeps a compact upright shape, is semi-transparent, shows the calculated percentage as the internal level, keeps the percentage inside the tank, and displays inches WC and gallons beside it.
+- Inventory input workflow/order remains unchanged from v1.15; these visual changes are for the report/PDF.

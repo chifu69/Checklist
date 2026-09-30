@@ -14,6 +14,7 @@ const CO2_TANK_TABLE=[
   {inch:130,gal:3955,pct:53.1},{inch:150,gal:4612,pct:61.9},{inch:170,gal:5268,pct:70.7},{inch:190,gal:5925,pct:79.5},
   {inch:210,gal:6582,pct:88.4},{inch:225,gal:7075,pct:95.0},{inch:236,gal:7450,pct:100.0}
 ];
+const SILO_CAPACITY={1:80000,2:185000,3:185000,4:185000,5:185000};
 function fmtNum(v,max=2){const n=Number(v);return Number.isFinite(n)?n.toLocaleString("en-US",{maximumFractionDigits:max}):"—"}
 function calcCo2Tank(reading){const n=Number(reading);if(!Number.isFinite(n))return null;for(const row of CO2_TANK_TABLE){if(Math.abs(row.inch-n)<1e-9)return{inch:n,gal:row.gal,pct:row.pct,exact:true}}if(n<=CO2_TANK_TABLE[0].inch)return{inch:n,gal:CO2_TANK_TABLE[0].gal,pct:CO2_TANK_TABLE[0].pct,exact:false};if(n>=CO2_TANK_TABLE[CO2_TANK_TABLE.length-1].inch)return{inch:n,gal:CO2_TANK_TABLE[CO2_TANK_TABLE.length-1].gal,pct:CO2_TANK_TABLE[CO2_TANK_TABLE.length-1].pct,exact:false};for(let i=0;i<CO2_TANK_TABLE.length-1;i++){const a=CO2_TANK_TABLE[i],b=CO2_TANK_TABLE[i+1];if(n>a.inch&&n<b.inch){const t=(n-a.inch)/(b.inch-a.inch);return{inch:n,gal:a.gal+(b.gal-a.gal)*t,pct:a.pct+(b.pct-a.pct)*t,exact:false}}}return null}
 function co2TankReportText(reading){const d=calcCo2Tank(reading);return d?`${fmtNum(d.inch)} in. WC | ${fmtNum(d.gal)} gal | ${fmtNum(d.pct,1)}%`:"—"}
@@ -103,12 +104,11 @@ function statusCell(value,status){
   else if(status==="status-bad"){bg=COLORS.redBg;color=COLORS.red}
   return{text:value||"—",align:"center",bg,color,bold:!!status};
 }
-function siloColor(v){
-  const n=Number(v);
-  if(!Number.isFinite(n))return{stroke:"#7b8995",fill:"#edf1f4",cone:"#cbd5dd",text:"#5e6b77"};
-  if(n>100000)return{stroke:"#2f8a5b",fill:"#ddf3e6",cone:"#9fd9b7",text:COLORS.green};
-  if(n>=50000)return{stroke:"#c18a12",fill:"#fff1bd",cone:"#f0cc6a",text:COLORS.yellow};
-  return{stroke:"#bd3d3d",fill:"#ffe1e1",cone:"#e99898",text:COLORS.red};
+function siloMetrics(index,value){
+  const n=Number(value),capacity=SILO_CAPACITY[index]||185000;
+  if(!Number.isFinite(n))return{n:null,capacity,pct:null,color:"#5e6b77"};
+  const pct=clampPct(n/capacity*100),color=pct<20?COLORS.red:pct<50?COLORS.yellow:COLORS.green;
+  return{n,capacity,pct,color};
 }
 function roundRectPath(ctx,x,y,w,h,r){
   r=Math.min(r,w/2,h/2);
@@ -118,44 +118,63 @@ function roundRectPath(ctx,x,y,w,h,r){
   ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);
   ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();
 }
-function drawSilo(ctx,cx,y,label,value){
-  const c=siloColor(value),w=100,left=cx-w/2;
-  ctx.strokeStyle=c.stroke;ctx.lineWidth=5;ctx.fillStyle=c.fill;
-  roundRectPath(ctx,left,y,w,90,16);ctx.fill();ctx.stroke();
-  ctx.fillStyle=c.cone;ctx.beginPath();ctx.moveTo(left+18,y+90);ctx.lineTo(left+w-18,y+90);ctx.lineTo(cx,y+126);ctx.closePath();ctx.fill();
-  ctx.fillStyle=c.stroke;ctx.fillRect(left+25,y+124,6,28);ctx.fillRect(left+w-31,y+124,6,28);
-  ctext(ctx,label,cx,y+34,{bold:true,size:17,color:c.text,align:"center"});
-  const t=(value!==""&&value!=null&&!Number.isNaN(Number(value)))?Number(value).toLocaleString("en-US",{maximumFractionDigits:2})+" lb":"—";
-  ctext(ctx,t,cx,y+160,{bold:true,size:18,color:c.text,align:"center"});
+function siloVesselPath(ctx,left,top,w,h){
+  const shoulder=12,coneTop=top+h*.68,bottom=top+h;
+  ctx.beginPath();
+  ctx.moveTo(left+w*.15,top+shoulder);
+  ctx.quadraticCurveTo(left+w*.5,top,left+w*.85,top+shoulder);
+  ctx.lineTo(left+w*.85,coneTop);
+  ctx.lineTo(left+w*.5,bottom);
+  ctx.lineTo(left+w*.15,coneTop);
+  ctx.closePath();
+}
+function drawSilo(ctx,cx,y,index,value){
+  const m=siloMetrics(index,value),scale=index===1?.80:1,w=104*scale,h=132*scale;
+  const bottom=y+142,left=cx-w/2,top=bottom-h;
+  ctx.save();siloVesselPath(ctx,left,top,w,h);ctx.clip();
+  const g=ctx.createLinearGradient(left,0,left+w,0);g.addColorStop(0,"rgba(194,204,210,.70)");g.addColorStop(.5,"rgba(255,255,255,.82)");g.addColorStop(1,"rgba(173,185,192,.72)");ctx.fillStyle=g;ctx.fillRect(left,top,w,h);
+  if(m.pct!==null){const fillTop=top+h*(1-m.pct/100);ctx.fillStyle="rgba(226,208,166,.78)";ctx.fillRect(left,fillTop,w,bottom-fillTop)}
+  ctx.strokeStyle="rgba(119,132,142,.58)";ctx.lineWidth=1;
+  for(let yy=top+15;yy<top+h*.68;yy+=7){ctx.beginPath();ctx.moveTo(left+w*.16,yy);ctx.lineTo(left+w*.84,yy);ctx.stroke()}
+  ctx.restore();
+  ctx.strokeStyle="#74818b";ctx.lineWidth=2;siloVesselPath(ctx,left,top,w,h);ctx.stroke();
+  const lx=left+w*.23;ctx.lineWidth=1.4;ctx.beginPath();ctx.moveTo(lx,top+12);ctx.lineTo(lx,bottom-9);ctx.moveTo(lx+8,top+12);ctx.lineTo(lx+8,bottom-9);ctx.stroke();for(let yy=top+22;yy<bottom-12;yy+=10){ctx.beginPath();ctx.moveTo(lx,yy);ctx.lineTo(lx+8,yy);ctx.stroke()}
+  ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(left+w*.31,bottom-7);ctx.lineTo(left+w*.31,bottom+12);ctx.moveTo(left+w*.69,bottom-7);ctx.lineTo(left+w*.69,bottom+12);ctx.stroke();
+  ctext(ctx,"SILO "+index,cx,y+151,{bold:true,size:16,color:COLORS.navy,align:"center"});
+  const t=m.n===null?"—":fmtNum(m.n)+" lb";ctext(ctx,t,cx,y+178,{bold:true,size:18,color:m.color,align:"center"});
 }
 function clampPct(v){const n=Number(v);return Number.isFinite(n)?Math.max(0,Math.min(100,n)):0}
+function drawGaylordBox(ctx,x,y){
+  ctx.fillStyle="#c89455";ctx.strokeStyle="#805a2b";ctx.lineWidth=2;ctx.fillRect(x+12,y+14,72,42);ctx.strokeRect(x+12,y+14,72,42);
+  ctx.fillStyle="#ddb47d";ctx.beginPath();ctx.moveTo(x+12,y+14);ctx.lineTo(x+30,y+7);ctx.lineTo(x+84,y+7);ctx.lineTo(x+84,y+14);ctx.closePath();ctx.fill();ctx.stroke();
+  ctx.fillStyle="#f1eee3";ctx.beginPath();ctx.moveTo(x+20,y+14);ctx.quadraticCurveTo(x+48,y+4,x+76,y+14);ctx.closePath();ctx.fill();
+  ctx.fillStyle="#8b5b2f";ctx.fillRect(x+6,y+56,84,6);ctx.fillStyle="#6f4725";ctx.fillRect(x+14,y+62,12,5);ctx.fillRect(x+68,y+62,12,5);
+}
 function drawButaneTank(ctx,x,y,pct){
-  const w=126,h=42,p=clampPct(pct);
-  ctx.save();roundRectPath(ctx,x,y,w,h,21);ctx.clip();ctx.fillStyle="#f7f9fb";ctx.fillRect(x,y,w,h);ctx.fillStyle="#79c59a";ctx.fillRect(x+3,y+3,(w-6)*p/100,h-6);ctx.restore();
-  ctx.strokeStyle="#7b8995";ctx.lineWidth=3;roundRectPath(ctx,x,y,w,h,21);ctx.stroke();
-  ctx.fillStyle="#7b8995";ctx.fillRect(x+24,y+h,5,9);ctx.fillRect(x+w-29,y+h,5,9);ctx.strokeRect(x-8,y+12,8,18);
+  const w=445,h=72,p=clampPct(pct),r=h/2;
+  ctx.save();roundRectPath(ctx,x,y,w,h,r);ctx.clip();
+  const g=ctx.createLinearGradient(x,0,x+w,0);g.addColorStop(0,"rgba(220,229,234,.72)");g.addColorStop(.5,"rgba(255,255,255,.82)");g.addColorStop(1,"rgba(198,209,215,.72)");ctx.fillStyle=g;ctx.fillRect(x,y,w,h);
+  const liquidY=y+h*(1-p/100);ctx.fillStyle="rgba(84,176,217,.60)";ctx.fillRect(x,liquidY,w,y+h-liquidY);ctx.strokeStyle="rgba(38,132,176,.80)";ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x+4,liquidY);ctx.lineTo(x+w-4,liquidY);ctx.stroke();ctx.restore();
+  ctx.strokeStyle="#7b8995";ctx.lineWidth=3;roundRectPath(ctx,x,y,w,h,r);ctx.stroke();ctx.fillStyle="#7b8995";ctx.fillRect(x+66,y+h,10,12);ctx.fillRect(x+w-76,y+h,10,12);ctx.fillRect(x+w*.48,y-8,20,9);
+  ctext(ctx,"ISOBUTANE",x+100,y+24,{bold:true,size:13,color:"#b22d2d",align:"center"});ctext(ctx,fmtNum(pct,1)+"%",x+w-85,y+20,{bold:true,size:28,color:COLORS.navy,align:"center"});
 }
 function drawCo2Tank(ctx,x,y,pct){
-  const w=48,h=78,p=clampPct(pct);
-  ctx.save();roundRectPath(ctx,x,y,w,h,15);ctx.clip();ctx.fillStyle="#f7f9fb";ctx.fillRect(x,y,w,h);ctx.fillStyle="#79c59a";ctx.fillRect(x+3,y+h-3-(h-6)*p/100,w-6,(h-6)*p/100);ctx.restore();
-  ctx.strokeStyle="#7b8995";ctx.lineWidth=3;roundRectPath(ctx,x,y,w,h,15);ctx.stroke();ctx.strokeRect(x+17,y-10,14,10);
-  ctx.fillStyle="#7b8995";ctx.fillRect(x+10,y+h,4,8);ctx.fillRect(x+w-14,y+h,4,8);
-  ctext(ctx,"CO2",x+w/2,y+29,{bold:true,size:10,color:"#0f57b7",align:"center"});
+  const w=94,h=112,p=clampPct(pct);
+  ctx.save();ctx.beginPath();ctx.moveTo(x+12,y+22);ctx.quadraticCurveTo(x+w/2,y,x+w-12,y+22);ctx.lineTo(x+w-12,y+h-15);ctx.quadraticCurveTo(x+w-12,y+h-5,x+w-22,y+h-5);ctx.lineTo(x+22,y+h-5);ctx.quadraticCurveTo(x+12,y+h-5,x+12,y+h-15);ctx.closePath();ctx.clip();
+  const g=ctx.createLinearGradient(x,0,x+w,0);g.addColorStop(0,"rgba(218,227,232,.72)");g.addColorStop(.52,"rgba(255,255,255,.84)");g.addColorStop(1,"rgba(193,204,211,.72)");ctx.fillStyle=g;ctx.fillRect(x,y,w,h);
+  const liquidY=y+h*(1-p/100);ctx.fillStyle="rgba(84,176,217,.60)";ctx.fillRect(x,liquidY,w,y+h-liquidY);ctx.strokeStyle="rgba(38,132,176,.80)";ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(x+13,liquidY);ctx.lineTo(x+w-13,liquidY);ctx.stroke();ctx.restore();
+  ctx.strokeStyle="#7b8995";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(x+12,y+22);ctx.quadraticCurveTo(x+w/2,y,x+w-12,y+22);ctx.lineTo(x+w-12,y+h-15);ctx.quadraticCurveTo(x+w-12,y+h-5,x+w-22,y+h-5);ctx.lineTo(x+22,y+h-5);ctx.quadraticCurveTo(x+12,y+h-5,x+12,y+h-15);ctx.closePath();ctx.stroke();ctx.strokeRect(x+w/2-10,y-8,20,10);ctx.fillStyle="#7b8995";ctx.fillRect(x+24,y+h-5,6,11);ctx.fillRect(x+w-30,y+h-5,6,11);
+  ctext(ctx,"CO2",x+w/2,y+27,{bold:true,size:12,color:"#0f57b7",align:"center"});ctext(ctx,fmtNum(pct,1)+"%",x+w/2,y+58,{bold:true,size:21,color:COLORS.navy,align:"center"});
 }
 function drawInventoryRows(ctx,y,d){
-  const x=46,labelW=850,valueW=333,totalW=1183;
-  const row=(label,h,drawValue,opt={})=>{
-    ctx.fillStyle=opt.bg||"#fff";ctx.fillRect(x+labelW,y,valueW,h);ctx.fillStyle="#fff";ctx.fillRect(x,y,labelW,h);
-    ctx.strokeStyle=COLORS.line;ctx.lineWidth=1;ctx.strokeRect(x,y,labelW,h);ctx.strokeRect(x+labelW,y,valueW,h);
-    ctext(ctx,label,x+10,y+(h-18)/2,{bold:true,size:16});drawValue(x+labelW,y,valueW,h);y+=h;
-  };
+  const x=46,labelW=365,valueW=818;
+  const row=(label,h,drawValue)=>{ctx.fillStyle="#fff";ctx.fillRect(x,y,labelW,h);ctx.fillRect(x+labelW,y,valueW,h);ctx.strokeStyle=COLORS.line;ctx.lineWidth=1;ctx.strokeRect(x,y,labelW,h);ctx.strokeRect(x+labelW,y,valueW,h);ctext(ctx,label,x+10,y+(h-20)/2,{bold:true,size:17});drawValue(x+labelW,y,valueW,h);y+=h};
   const t=Number(d.inventory?.talcBoxes),hasTalc=d.inventory?.talcBoxes!==""&&Number.isFinite(t);
-  const talcBg=hasTalc?(t<14?COLORS.redBg:COLORS.greenBg):"#fff",talcColor=hasTalc?(t<14?COLORS.red:COLORS.green):COLORS.ink;
-  row("Talc (14 Boxes Minimum)",44,(vx,vy,vw,vh)=>ctext(ctx,hasTalc?d.inventory.talcBoxes+" boxes":"—",vx+vw/2,vy+12,{bold:hasTalc,size:16,color:talcColor,align:"center"}),{bg:talcBg});
+  row("Talc (14 Boxes Minimum)",62,(vx,vy,vw)=>{if(!hasTalc){ctext(ctx,"—",vx+vw/2,vy+20,{size:17,align:"center"});return}drawGaylordBox(ctx,vx+175,vy-2);ctext(ctx,fmtNum(t)+" boxes",vx+500,vy+18,{bold:true,size:22,color:t<14?COLORS.red:COLORS.green,align:"center"})});
   const b=Number(d.inventory?.butane),hasB=d.inventory?.butane!==""&&Number.isFinite(b);
-  row("Butane Tank",58,(vx,vy,vw,vh)=>{if(!hasB){ctext(ctx,"—",vx+vw/2,vy+18,{size:16,align:"center"});return}drawButaneTank(ctx,vx+48,vy+8,b);ctext(ctx,fmtNum(b,1)+"%",vx+235,vy+18,{bold:true,size:20,color:COLORS.navy,align:"center"})});
+  row("Butane Tank",100,(vx,vy,vw)=>{if(!hasB){ctext(ctx,"—",vx+vw/2,vy+34,{size:18,align:"center"});return}drawButaneTank(ctx,vx+170,vy+8,b)});
   const c=calcCo2Tank(d.inventory?.co2);
-  row("CO2 Tank Level",94,(vx,vy,vw,vh)=>{if(!c){ctext(ctx,"—",vx+vw/2,vy+34,{size:16,align:"center"});return}drawCo2Tank(ctx,vx+58,vy+9,c.pct);ctext(ctx,fmtNum(c.pct,1)+"%",vx+220,vy+18,{bold:true,size:20,color:COLORS.navy,align:"center"});ctext(ctx,fmtNum(c.inch)+" in. WC | "+fmtNum(c.gal)+" gal",vx+220,vy+48,{size:13,color:COLORS.muted,align:"center"})});
+  row("CO2 Tank Level",120,(vx,vy,vw)=>{if(!c){ctext(ctx,"—",vx+vw/2,vy+44,{size:18,align:"center"});return}drawCo2Tank(ctx,vx+205,vy+4,c.pct);ctext(ctx,fmtNum(c.inch)+" in. WC  |  "+fmtNum(c.gal)+" gal",vx+515,vy+46,{bold:true,size:18,color:COLORS.navy,align:"center"})});
   return y;
 }
 function makeCanvas(){const c=document.createElement("canvas");c.width=1275;c.height=1650;return c}
@@ -205,7 +224,7 @@ function renderPdfPages(d){
     [{text:"Mechanical Room Blower Powder Barrel Checked",bold:true},{text:d.common?.mechanicalBlower||"—",align:"center"},{text:"All screen packs clean and accounted",bold:true},{text:d.common?.screenPacks||"—",align:"center"}]
   ],{size:14,minH:42});
   y=section(ctx,"INVENTORY LEVELS",y+12);
-  const centers=[155,395,635,875,1115];for(let i=0;i<5;i++)drawSilo(ctx,centers[i],y+16,"SILO "+(i+1),d.inventory?.["silo"+(i+1)]);y+=205;
+  const centers=[155,395,635,875,1115];for(let i=0;i<5;i++)drawSilo(ctx,centers[i],y+16,i+1,d.inventory?.["silo"+(i+1)]);y+=205;
   y=drawInventoryRows(ctx,y,d);
   y=section(ctx,"NOTES",y+12);ctx.strokeStyle=COLORS.line;ctx.strokeRect(46,y,1183,150);wrapped(ctx,d.notes||"",62,y+12,1150,22,{size:15});
   ctext(ctx,"DCN TN-100-00003",46,1608,{size:12,color:COLORS.muted});pages.push(c);
