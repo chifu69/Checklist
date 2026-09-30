@@ -140,8 +140,11 @@ function drawSilo(ctx,cx,y,index,value){
   ctx.strokeStyle="#74818b";ctx.lineWidth=2;siloVesselPath(ctx,left,top,w,h);ctx.stroke();
   const lx=left+w*.23;ctx.lineWidth=1.4;ctx.beginPath();ctx.moveTo(lx,top+12);ctx.lineTo(lx,bottom-9);ctx.moveTo(lx+8,top+12);ctx.lineTo(lx+8,bottom-9);ctx.stroke();for(let yy=top+22;yy<bottom-12;yy+=10){ctx.beginPath();ctx.moveTo(lx,yy);ctx.lineTo(lx+8,yy);ctx.stroke()}
   ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(left+w*.31,bottom-7);ctx.lineTo(left+w*.31,bottom+12);ctx.moveTo(left+w*.69,bottom-7);ctx.lineTo(left+w*.69,bottom+12);ctx.stroke();
-  ctext(ctx,"SILO "+index,cx,y+151,{bold:true,size:16,color:COLORS.navy,align:"center"});
-  const t=m.n===null?"—":fmtNum(m.n)+" lb";ctext(ctx,t,cx,y+178,{bold:true,size:18,color:m.color,align:"center"});
+  ctext(ctx,"SILO "+index,cx,y+147,{bold:true,size:16,color:COLORS.navy,align:"center"});
+  const t=m.n===null?"—":fmtNum(m.n)+" lb";
+  // Keep the weight well above the next inventory row. Some mail/PDF previews
+  // crop or soften text that sits too close to a following rasterized border.
+  ctext(ctx,t,cx,y+171,{bold:true,size:22,color:m.color,align:"center"});
 }
 function clampPct(v){const n=Number(v);return Number.isFinite(n)?Math.max(0,Math.min(100,n)):0}
 function drawGaylordBox(ctx,x,y){
@@ -224,7 +227,10 @@ function renderPdfPages(d){
     [{text:"Mechanical Room Blower Powder Barrel Checked",bold:true},{text:d.common?.mechanicalBlower||"—",align:"center"},{text:"All screen packs clean and accounted",bold:true},{text:d.common?.screenPacks||"—",align:"center"}]
   ],{size:14,minH:42});
   y=section(ctx,"INVENTORY LEVELS",y+12);
-  const centers=[155,395,635,875,1115];for(let i=0;i<5;i++)drawSilo(ctx,centers[i],y+16,i+1,d.inventory?.["silo"+(i+1)]);y+=205;
+  const centers=[155,395,635,875,1115];for(let i=0;i<5;i++)drawSilo(ctx,centers[i],y+16,i+1,d.inventory?.["silo"+(i+1)]);
+  // Extra clearance prevents the silo weight labels from being covered by the Talc row
+  // in emailed/mobile PDF previews.
+  y+=232;
   y=drawInventoryRows(ctx,y,d);
   y=section(ctx,"NOTES",y+12);ctx.strokeStyle=COLORS.line;ctx.strokeRect(46,y,1183,150);wrapped(ctx,d.notes||"",62,y+12,1150,22,{size:15});
   ctext(ctx,"DCN TN-100-00003",46,1608,{size:12,color:COLORS.muted});pages.push(c);
@@ -236,7 +242,7 @@ function dataUrlBytes(url){
   return a;
 }
 function pdfFromCanvases(canvases){
-  const imgs=canvases.map(c=>({bytes:dataUrlBytes(c.toDataURL("image/jpeg",0.9)),w:c.width,h:c.height}));
+  const imgs=canvases.map(c=>({bytes:dataUrlBytes(c.toDataURL("image/jpeg",0.96)),w:c.width,h:c.height}));
   const enc=new TextEncoder(),chunks=[],offsets=[0];let total=0;
   const pushStr=s=>{const b=enc.encode(s);chunks.push(b);total+=b.length};
   const pushBytes=b=>{chunks.push(b);total+=b.length};

@@ -1,4 +1,4 @@
-# Extrusion Sr. Lead Daily Checklist — v1.16
+# Extrusion Sr. Lead Daily Checklist — v1.17
 
 Phone-friendly PWA based on the supplied Sr. Lead Daily Checklist.
 
@@ -68,6 +68,12 @@ Version v1.10 updates:
 - CO2 still shows inches WC, calculated gallons, and percent full.
 - Saved/share PDF layout now packs Safety and Productivity/Blends together when space allows, reducing wasted white space and normally producing a tighter two-page report.
 - Equipment / Inventory / Notes remains grouped together and compact.
+
+## v1.17 — Silo weight readability fix
+- Added more vertical clearance below the silo graphics so the weight labels are not covered by the Talc row in emailed/mobile PDF previews.
+- Increased silo weight text from 18 px to 22 px for easier reading after PDF scaling.
+- Raised JPEG export quality from 0.90 to 0.96 to keep small report text crisper in email/PDF viewers.
+- Inventory logic and approved Talc/Butane/CO2 visuals are unchanged.
 
 ## v1.16 — Approved dynamic Inventory report visuals
 - Report-only Inventory Levels redesign based on the approved mockup.
